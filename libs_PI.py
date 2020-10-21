@@ -7,9 +7,11 @@ import matplotlib.image as mpimg
 sns.set()
 
 
+
 def Check_IMG(IMG, RGB=False, YIQ=False, normed=False):
     """
     Función para checkear que los valores en una IMG sean válidos
+    
     Parámetros:
     ----------
     IMG   : Matriz (ndarray) con los valores de los píxeles a analizar.
@@ -66,6 +68,7 @@ def Check_IMG(IMG, RGB=False, YIQ=False, normed=False):
 def RGBtoYIQ(RGB, normed=False, verb=False):
     """
     Función para pasar de RGB a YIQ.
+    
     Parámetros:
     ----------
     RGB   : Matriz (ndarray) con los valores RGB de los
@@ -102,7 +105,9 @@ def RGBtoYIQ(RGB, normed=False, verb=False):
 
 def ModifyYIQ(YIQ, alpha=1., beta=1., verb=False):
     """
-    Función para modificar el YIQ.
+    Función para modificar el YIQ, por medio de 
+     alpha y/o beta.
+    
     Parámetros:
     ----------
     YIQ  : Matriz (ndarray) con los valores YIQ de
@@ -147,6 +152,7 @@ def ModifyYIQ(YIQ, alpha=1., beta=1., verb=False):
 def YIQtoRGB(YIQ, normed=False, verb=False):
     """
     Función para pasar de YIQ a RGB.
+    
     Parámetros:
     ----------
     YIQ   : Matriz (ndarray) con los valores RGB de
@@ -191,6 +197,7 @@ def PiecewiseLinear(Y, Y_min=0, Y_max=1):
         Y = (Y-Y_min) / (Y_max-Y_min)   para Y_min <= Y <=Y_max
         Y = 1                           para Y > Y_max
     Supuesto para array normalizado al rango [0,1).
+    
     Parámetros:
     ----------
     Y    : Array al que se le aplicará la transformación.
@@ -218,6 +225,7 @@ def PiecewiseLinear(Y, Y_min=0, Y_max=1):
 def ChangeY(Y, func=None, clamp=True, **kwargs):
     """
     Función para aplicar una cierta transformación a un array Y.
+    
     Parámetros:
     ----------
     Y   : Array al que se le aplicará la transformación.
@@ -300,3 +308,441 @@ def ChangeY(Y, func=None, clamp=True, **kwargs):
 
 
     return Y_m
+
+
+
+def Transform_IMG(img, 
+                  x_min=0, x_max=1, y_min=0, y_max=1, 
+                  x_inv=False, y_inv=False,
+                  rot=False):
+    """
+    Función para realizar transformaciones a una imagen (ndarray).
+    Transformaciones posibles: Crop, Flip, Rotate.
+    
+    Parámetros:
+    ----------
+    img  : Imagen (ndarray) a recortar.
+    x_min: Posición porcentual [0,x_max), del borde izquierdo
+             nuevo, respecto a la imagen original.
+    x_max: Posición porcentual (x_min,1], del borde derecho
+             nuevo, respecto a la imagen original.
+    y_min: Posición porcentual [0,y_max), del borde inferior
+             nuevo, respecto a la imagen original.
+    y_max: Posición porcentual (y_min,1], del borde superior
+             nuevo, respecto a la imagen original.
+    x_inv: Inevrtir imagen en x. (Bool)
+    y_inv: Inevrtir imagen en y. (Bool)
+    rot  : Rotar imagen 90° en sentido antihorario. (Bool)
+    """   
+    
+    # Check
+    if x_min>=x_max: raise ValueError('x_min debe ser < x_max')
+    if y_min>=y_max: raise ValueError('y_min debe ser < x_max')
+    if (x_min<0) or (x_min>1): 
+        raise ValueError('x_min debe ser >= 0 y < 1')
+    if (y_min<0) or (y_min>1): 
+        raise ValueError('y_min debe ser >= 0 y < 1')
+    if (x_max>1): raise ValueError('x_max debe ser <= 1')
+    if (y_max>1): raise ValueError('y_max debe ser <= 1')
+    
+    Check_IMG(img)
+    
+    # Work on a copy
+    img_c = img.copy()
+    
+    # Crop
+    ## Python trabaja desde la esquina superior izquierda,
+    ## por eso trabajamos con el opuesto al y otorgado.
+    row_min = int((1-y_max) * img.shape[0])
+    row_max = int((1-y_min) * img.shape[0]) 
+    col_min = int(x_min * img.shape[1])
+    col_max = int(x_max * img.shape[1])
+    img_c   = img_c[row_min:row_max, col_min:col_max, :]
+    
+    # Flip
+    if x_inv: img_c = np.flip(img_c, axis=1)
+    if y_inv: img_c = np.flip(img_c, axis=0)
+    
+    # Rotation
+    ## Al transopner, también de debe flippear en y
+    if rot: 
+        img_c = np.transpose(img_c, axes=[1,0,2])
+        img_c = np.flip(img_c, axis=0)    
+    
+    
+    return img_c
+
+
+
+def Resize_IMG(img,
+               width=None, height=None,
+               resize=False,
+               crop=False,
+               fill=None,
+               verb=False):
+    """
+    Función para realizar edición de tamaño a 1 imagen (array).
+    Se define primero el ancho y alto buscado, y luego se 
+     especifica qué operaciones se quieren realizar (Ordenadas 
+     según orden de ejecución).
+        - Cambio de tamaño: La imagen se expande/contrae lo mayor
+            posible, conservando su aspecto, hasta el ancho/alto
+            especificado.
+        - Corte: En caso de que la imagen tenga mayor tamaño al
+            especificado, se recorta el excedente.
+        - Rellenado: En caso de que la imagen tenfa mayor tamaño
+            al especificado, se rellena el faltante con algún 
+            color (RGB).
+    Notesé que, si a no se especifica la operación CROP y/o FILL,
+    la imagen puede que no termine con el tamaño especificado.
+            
+    Parámetros:
+    -----------
+    img   : Imagen (ndarray) a aplicar edición.
+    width : Ancho en píxeles a setear. 
+            Si width==None, se mantiene el ancho original. 
+            (int)
+    height: Alto en píxeles a setear. 
+             Si height==None, se mantiene el alto original.
+            (int)
+    resize: Expandir/Contraer la imagen, conservando el aspecto 
+             original (height/width == cte).
+            (bool)
+    crop  : Aplciar recorte de excedente a la imagen.
+            (bool)
+    fill  : Aplciar rellenado de faltante, para alcanzar el tamaño
+             especificado. 
+            Se puede definir una tupla o lista de 3 valores
+             (R,G,B), del color a rellenar, o su nombre (en
+             inglés), en formato string (Ej.: 'red', 'green'),
+             capaz de ser manipulado por matplotlib. 
+            Si fill==True se rellena con negro.
+            (tuple/list)
+    verb  : Imprimir los pasos realizados.
+            (bool)
+    """
+    
+    # Check
+    Check_IMG(img)
+
+    # Width/Height
+    ## Height
+    if isinstance(height, int):
+        if   height>0: h = height
+        else: raise ValueError('height debe ser > 0')
+    elif height is None: h = img.shape[0]
+    else: raise TypeError('Formato erróneo de height.')
+    ## Width
+    if isinstance(width, int): 
+        if   width>0: w = width
+        else: raise ValueError('width debe ser > 0')
+    elif width is None: w = img.shape[1]
+    else: raise TypeError('Formato erróneo de width.')
+    
+    if verb: print('[Ancho, Alto] buscado:', w, h)   
+    
+    
+    # Working in IMAGE format
+    i = Image.fromarray((img*255).astype('uint8'))
+    
+    # Verbose
+    if verb:
+        old = i.size
+        print('Tamaño inicial:', old)
+        
+    # Resize
+    if resize:
+        if (w<=i.size[0]) | (h<=i.size[1]):
+            i.thumbnail([w,h], Image.ANTIALIAS)
+        else:
+            r = i.size[1]/float(i.size[0])
+            sep_w = w / float(i.size[0])
+            sep_h = h / float(i.size[1])
+            if sep_h < sep_w:
+                i = i.resize([int(h/r),h], Image.ANTIALIAS)
+            else:
+                i = i.resize([w,int(w*r)], Image.ANTIALIAS)
+        if verb: 
+            print('Aplicado resize:', old, '-->', i.size)
+            old = i.size
+                
+    # Crop | BOX == [left, [up, right), down)
+    if crop:
+        dw = i.size[0] - w # IMG uses inverted size
+        dh = i.size[1] - h # IMG uses inverted size
+        le = int(dw/2)     if dw>0 else 0
+        ri = int(dw/2) + w if dw>0 else i.size[0]
+        up = int(dh/2)     if dh>0 else 0
+        do = int(dh/2) + h if dh>0 else i.size[1]
+        i  = i.crop((le, up, ri, do))
+        if verb: 
+            print('Aplicado corte:', old, '-->', i.size)
+            old = i.size
+            
+    # Fill
+    if fill is not None:
+        wf = w if (i.size[0] < w) else i.size[0]
+        hf = h if (i.size[1] < h) else i.size[1]
+        if isinstance(fill, list): fill = tuple(fill)
+        if fill==True: fill = (0,0,0)
+        f = Image.new('RGB', (wf, hf), color=fill)
+        f.paste(i, (int((wf - i.size[0]) / 2),
+                    int((hf - i.size[1]) / 2)))
+        i = f
+        if verb: 
+            print('Aplicado rellenado:', old, '-->', i.size)
+            print('\t Color utilizado:', fill)
+    
+    # Verbose
+    if verb:
+        print('\n Tamaño final:', i.size)
+        
+    # Return to array
+    i = np.array(i)/255.
+    
+    
+    return i
+
+
+
+def Resize2IMGs(img1, img2,
+                width=None, height=None,
+                resize_1=False, resize_2=False,
+                crop_1=False, crop_2=False,
+                fill_1=None, fill_2=None,
+                verb=False):
+    """
+    Función para realizar edición de tamaño a 2 imágenes (arrays),
+     utilizando la función Resize_IMG. (Ver Resize_IMG? para más
+     información.)
+     
+    Parámetros:
+    -----------
+    img1    : Imagen 1 (ndarray) a aplicar edición.
+    img2    : Imagen 2 (ndarray) a aplicar edición.
+    width   : Ancho en píxeles a setear ambas imágenes. 
+              Si width==None, ambas conservan el ancho.
+              Si width=='first' / 'second', se utiliza el ancho de
+              la imagen 1 / 2, para ambas imágenes.
+              (int)
+    height  : Alto en píxeles a setear ambas imágenes.
+              Si height==None, ambas conservan el alto.
+              Si height=='first' / 'second', se utiliza el alto de
+              la imagen 1 / 2, para ambas imágenes.
+              (int)
+    resize_1: Aplicar resize en imagen 1.
+              (bool)
+    resize_2: Aplicar resize en imagen 2.
+              (bool)
+    crop_1  : Aplicar crop en imagen 1.
+              (bool)
+    crop_2  : Aplicar crop en imagen 2.
+              (bool)
+    fill_1  : Aplicar rellenado en imagen 1.
+              (bool)
+    fill_2  : Aplicar rellenado en imagen 2.
+              (bool)
+    verb    : Imprimir los pasos realizados.
+              (bool)
+    """
+    
+    # Width/Height
+    ## Height
+    if   height == 'first' : height = img1.shape[0]
+    elif height == 'second': height = img2.shape[0] 
+    ## Width
+    if   width == 'first' : width = img1.shape[1]
+    elif width == 'second': width = img2.shape[1]  
+    
+    #Transform
+    if verb: print('Transformando Imagen 1...')
+    i1 = Resize_IMG(img1,
+                    width=width, height=height,
+                    resize=resize_1,
+                    crop=crop_1,
+                    fill=fill_1,
+                    verb=verb)
+    if verb: print('\n Transformando Imagen 2...')
+    i2 = Resize_IMG(img2,
+                    width=width, height=height,
+                    resize=resize_2,
+                    crop=crop_2,
+                    fill=fill_2,
+                    verb=verb)
+    
+
+    return i1, i2
+
+
+
+def Algebra_IMGs(img1, img2, 
+                 normed_1=True, normed_2=True,
+                 op=None, fo=None, 
+                 verb=False):
+    """
+    Función para realizar operaciones algebraicas entre 2 
+     imágenes (ndarrays). Ambos array deben tener el mismo
+     tamaño.
+    Las operaciones (píxel a píxel) disponibles son:
+        - suma    ['suma',      'sum'       ]
+        - resta   ['resta',     'subtract'  ]
+        - lighter ['mas_claro', 'if_lighter']
+        - darker  ['mas_oscuro','if_darker' ]
+    Los formatos (cierres) disponible son:
+        - RGB clampeado ['RGB_truncado', 'RGB_clamp'  ]
+        - RGB promedio  ['RGB_promedio', 'RGB_average']
+        - YIQ clampeado ['YIQ_truncado', 'YIQ_clamp'  ] 
+        - YIQ promedio  ['YIQ_promedio', 'YIQ_average ]
+        - Ninguno       [None] (OBLIGATORIO si se opera
+                                 con lighter/darker)
+    
+    Nota: Al operar en el espacio YIQ, en TODOS los casos
+           se termina la operación clampeando las 3 
+           componentes en sus respectivos límites.
+           
+    Algoritmos (en cada píxel):
+        |   op    |   fo   |
+        ---------------------
+        - "suma"  | "RGB_clamp":
+            R, G, B := (R1+R2, G1+G2, B1+B2)
+        - "resta" | "RGB_clamp":
+            R, G, B := (R1-R2, G1-G2, B1-B2)
+        - "suma"  | "RGB_promedio":
+            R, G, B := (R1+R2, G1+G2, B1+B2)/2.
+        - "resta" | "RGB_promedio":
+            R, G, B := (R1-R2, G1-G2, B1-B2)/2.
+        - "suma"  | "YIQ_clamp":
+            Y := (Y1 + Y2)
+            I := (Y1 * I1 - Y2 * I2) / (Y1 + Y2)
+            Q := (Y1 * Q1 - Y2 * Q2) / (Y1 + Y2)
+        - "resta" | "YIQ_clamp":
+            Y := (Y1 - Y2)
+            I := (Y1 * I1 - Y2 * I2) / (Y1 - Y2)
+            Q := (Y1 * Q1 - Y2 * Q2) / (Y1 - Y2)
+        - "suma"  | "YIQ_promedio":
+            Y := (Y1 + Y2)/2.
+            I := (Y1 * I1 - Y2 * I2) / (Y1 + Y2)
+            Q := (Y1 * Q1 - Y2 * Q2) / (Y1 + Y2)
+        - "resta" | "YIQ_promedio":
+            Y := (Y1 - Y2)/2.
+            I := (Y1 * I1 - Y2 * I2) / (Y1 - Y2)
+            Q := (Y1 * Q1 - Y2 * Q2) / (Y1 - Y2)
+        - "mas_claro"
+            if Y1 > Y2:
+                Y, I, Q := Y1, I1, Q1
+            else:
+                Y, I, Q := Y2, I2, Q2
+        - "mas_oscuro"
+            if Y1 < Y2:
+                Y, I, Q := Y1, I1, Q1
+            else:
+                Y, I, Q := Y2, I2, Q2
+    
+    Parámetros:
+    -----------
+    img1    : Imagen 1 (ndarray) a aplicar operación.
+    img2    : Imagen 2 (ndarray) a aplicar operación.
+    normed_1: Si img1 ya está en RGB normalizado.
+              (bool)
+    normed_2: Si img2 ya está en RGB normalizado.
+              (bool)
+    op      : Operación a realizar, entre la lista de
+               posibles (ver arriba).
+              (str)
+    fo      : Formato de operación (cierre) a realizar,
+               entre la lista de posibles (ver arriba).
+              (str)
+    verb    : Imprimir el proceso realizado.
+              (bool)
+    """
+    
+    # Check
+    if img1.shape!=img2.shape:
+        raise ValueError('ERROR. Las imágenes deben'+\
+                         ' tener el mismo tamaño.')
+    ops = ['suma',      'sum', 
+           'resta',     'subtract',
+           'mas_claro', 'if_lighter', 
+           'mas_oscuro','if_darker']
+    
+    fos = ['RGB_truncado', 'RGB_clamp',
+           'RGB_promedio', 'RGB_average',
+           'YIQ_truncado', 'YIQ_clamp',
+           'YIQ_promedio', 'YIQ_average']
+    
+    if op is None: 
+        return print('No se especificó operación.')
+    if op not in ops: 
+        raise ValueError('Operación mal definida.')
+        
+    if (op in ops[:4]) and (fo not in fos):
+        raise ValueError('Formato mal (o no) definido.')
+    if (op in ops[4:]) and (fo is not None):
+        raise ValueError('Operaciones "if" deben'+\
+                         ' tener formato None.')
+    
+    if not normed_1: img1 = img1/255.
+    if not normed_2: img2 = img2/255.
+    
+    Check_IMG(img1)
+    Check_IMG(img2)
+    
+    # RGB
+    if fo in fos[:4]:
+        if   op in ops[ :2]: img = img1 + img2 # sum
+        elif op in ops[2:4]: img = img1 - img2 # sub
+        if fo in fos[:2]: ## clamp
+            img[img>1] = 1
+            img[img<0] = 0
+        else:             ## average
+            if op in ops[2:4]: img += 1 # if sub
+            img /= 2.
+    
+    #YIQ
+    else: # includes lighter/darker
+        img1 = RGBtoYIQ(img1, normed=True)
+        img2 = RGBtoYIQ(img2, normed=True)
+        Y1   = img1[:,:,0]
+        I1   = img1[:,:,1]
+        Q1   = img1[:,:,2]
+        Y2   = img2[:,:,0]
+        I2   = img2[:,:,1]
+        Q2   = img2[:,:,2]
+        if op in ops[4:]: # lighter/darker
+            if op in ops[4:6]:
+                img = np.maximum(img1, img2)
+            else:
+                img = np.minimum(img1, img2)
+            msk = np.equal(img [:,:,0], Y1)
+            img[:,:,1] = I1 * msk + I2 * ~msk
+            img[:,:,2] = Q1 * msk + Q2 * ~msk
+        else:
+            if   op in ops[:2]: # sum
+                img        = img1 + img2
+                img[:,:,1] = (Y1 * I1 + Y2 * I2)/(Y1 + Y2)
+                img[:,:,2] = (Y1 * Q1 + Y2 * Q2)/(Y1 + Y2)
+            elif op in ops[2:4]: #sub
+                img        = img1 - img2
+                img[:,:,1] = (Y1 * I1 - Y2 * I2)/(Y1 - Y2)
+                img[:,:,2] = (Y1 * Q1 - Y2 * Q2)/(Y1 - Y2)
+            if fo in fos[6:]:
+                if op in ops[2:4]: img[:,:,0] += 1 # if sub
+                img[:,:,0] /= 2. ## average
+            img[:,:,0][img[:,:,0] < 0    ] = 0          #Y
+            img[:,:,0][img[:,:,0] > 1    ] = 1          #Y
+            img[:,:,1][img[:,:,1] < -0.5957] = -0.5957  #I
+            img[:,:,1][img[:,:,1] > 0.5957 ] = 0.5957   #I
+            img[:,:,2][img[:,:,2] < -0.5226] = -0.5226  #Q
+            img[:,:,2][img[:,:,2] > 0.5226 ] = 0.5226   #Q
+            
+        img = YIQtoRGB(img, normed=True, verb=verb)
+    
+    # Final re-check
+    Check_IMG(img)
+    
+    # Verb
+    if verb: print('Se realizó la operación:', op,'\n\t'+\
+                   'utilizando el ciere:', fo)
+    
+        
+    return img
