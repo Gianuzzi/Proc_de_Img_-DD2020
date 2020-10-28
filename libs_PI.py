@@ -15,33 +15,35 @@ def Check_IMG(IMG, RGB=False, YIQ=False, normed=False):
     Parámetros:
     ----------
     IMG   : Matriz (ndarray) con los valores de los píxeles a analizar.
-    RGB   : Si la matriz de datos es de RGB.
-    YIQ   : Si la matriz de datos es de YIQ.
+    RGB   : Si la matriz de datos es de RGB o Y.
+    YIQ   : Si la matriz de datos es de YIQ
     normed: Si la matriz de datos RGB está normalizada a [0,1).
     """
 
     # Size
     size = IMG.shape
-    if (len(size)!=3) or (size[2]!=3):
-        raise ValueError('El array no posee la dimensión adecuada:'+\
-                         '[Alto, Ancho, 3]')
+    if (2>len(size)) | (len(size)>3):
+        raise ValueError('El array no posee la dimensión adecuada.')
+    if len(size)==3:
+        if size[2]!=3:
+            raise ValueError('El array no posee la dimensión'+\
+                             ' en colores adecuada.')
 
     # RGB
     if RGB:
         tipo   = IMG.ravel().dtype
         floats = ['float32', float]
         ints   = ['uint8', 'uint16', 'uint32', 'uint64',
-                  'int16', 'int32', int
-                  ]
+                  'int16', 'int32', int]
         MAX    = 1 if normed else 255
-        if np.any(IMG > MAX)              :
-            raise ValueError('RGB posee valores > %i'%MAX)
-        if np.any(IMG < 0)                :
-            raise ValueError('RGB posee valores < 0')
+        if np.any(IMG > MAX):
+            raise ValueError('RGB|Y posee valores > %i'%MAX)
+        if np.any(IMG < 0):
+            raise ValueError('RGB|Y posee valores < 0')
         if (tipo in floats) and not normed:
-            raise TypeError('RGB posee valores flotantes')
-        if (tipo in ints) and normed      :
-            raise TypeError('RGB posee solo valores enteros')
+            raise TypeError('RGB|Y posee valores flotantes')
+        if (tipo in ints) and normed:
+            raise TypeError('RGB|Y posee solo valores enteros')
 
     # YIQ
     if YIQ:
@@ -60,7 +62,7 @@ def Check_IMG(IMG, RGB=False, YIQ=False, normed=False):
         if np.any(IMG[:,:,2] > LimQ ):
             raise ValueError('IMG posee componente Q > {}'.format(LimQ))
 
-
+            
     return
 
 
@@ -76,7 +78,6 @@ def RGBtoYIQ(RGB, normed=False, verb=False):
              RGB.shape == [Alto, Ancho, [R,G,B]]
     normed: Si la matriz de datos RGB ya está normalizada a [0,1).
     verb  : Imprimir mensaje al realizar la transformación.
-    only_Y: Si se quiere devolver solamente la componente Y.
     """
 
     # Check
@@ -218,6 +219,7 @@ def PiecewiseLinear(Y, Y_min=0, Y_max=1):
     Y_m[h]       = 1
     Y_m[~l & ~h] = (Y_m[~l & ~h] - Y_min)/ (Y_max - Y_min)
 
+    
     return Y_m
 
 
@@ -314,25 +316,26 @@ def ChangeY(Y, func=None, clamp=True, **kwargs):
 def Transform_IMG(img, 
                   x_min=0, x_max=1, y_min=0, y_max=1, 
                   x_inv=False, y_inv=False,
-                  rot=False):
+                  rot=False, Y=False, verb=False):
     """
     Función para realizar transformaciones a una imagen (ndarray).
     Transformaciones posibles: Crop, Flip, Rotate.
     
     Parámetros:
     ----------
-    img  : Imagen (ndarray) a recortar.
-    x_min: Posición porcentual [0,x_max), del borde izquierdo
+    img   : Imagen (ndarray) a recortar.
+    x_min : Posición porcentual [0,x_max), del borde izquierdo
              nuevo, respecto a la imagen original.
-    x_max: Posición porcentual (x_min,1], del borde derecho
+    x_max : Posición porcentual (x_min,1], del borde derecho
              nuevo, respecto a la imagen original.
-    y_min: Posición porcentual [0,y_max), del borde inferior
+    y_min : Posición porcentual [0,y_max), del borde inferior
              nuevo, respecto a la imagen original.
-    y_max: Posición porcentual (y_min,1], del borde superior
+    y_max : Posición porcentual (y_min,1], del borde superior
              nuevo, respecto a la imagen original.
-    x_inv: Inevrtir imagen en x. (Bool)
-    y_inv: Inevrtir imagen en y. (Bool)
-    rot  : Rotar imagen 90° en sentido antihorario. (Bool)
+    x_inv : Inevrtir imagen en x. (Bool)
+    y_inv : Inevrtir imagen en y. (Bool)
+    rot   : Rotar imagen 90° en sentido antihorario. (Bool)
+    verb  : Imrpimir mensaje. (Bool)
     """   
     
     # Check
@@ -357,18 +360,21 @@ def Transform_IMG(img,
     row_max = int((1-y_min) * img.shape[0]) 
     col_min = int(x_min * img.shape[1])
     col_max = int(x_max * img.shape[1])
-    img_c   = img_c[row_min:row_max, col_min:col_max, :]
+    img_c   = img_c[row_min:row_max, col_min:col_max]
     
     # Flip
     if x_inv: img_c = np.flip(img_c, axis=1)
     if y_inv: img_c = np.flip(img_c, axis=0)
     
     # Rotation
-    ## Al transopner, también de debe flippear en y
-    if rot: 
-        img_c = np.transpose(img_c, axes=[1,0,2])
-        img_c = np.flip(img_c, axis=0)    
-    
+    if rot: img_c = np.rot90(img_c)  
+        
+    # Verbose
+    if verb:
+        if ((x_max-x_min)!=1) | ((y_max-y_min)!=1):
+            print('Se recortó la imagen.')
+        if x_inv | y_inv: print('Se invirtió la imagen.')
+        if rot: print('Se rotó la imagen.')
     
     return img_c
 
@@ -379,6 +385,7 @@ def Resize_IMG(img,
                resize=False,
                crop=False,
                fill=None,
+               normed=True,
                verb=False):
     """
     Función para realizar edición de tamaño a 1 imagen (array).
@@ -390,7 +397,7 @@ def Resize_IMG(img,
             especificado.
         - Corte: En caso de que la imagen tenga mayor tamaño al
             especificado, se recorta el excedente.
-        - Rellenado: En caso de que la imagen tenfa mayor tamaño
+        - Rellenado: En caso de que la imagen tenga mayor tamaño
             al especificado, se rellena el faltante con algún 
             color (RGB).
     Notesé que, si a no se especifica la operación CROP y/o FILL,
@@ -408,9 +415,9 @@ def Resize_IMG(img,
     resize: Expandir/Contraer la imagen, conservando el aspecto 
              original (height/width == cte).
             (bool)
-    crop  : Aplciar recorte de excedente a la imagen.
+    crop  : Aplicar recorte de excedente a la imagen.
             (bool)
-    fill  : Aplciar rellenado de faltante, para alcanzar el tamaño
+    fill  : Aplicar rellenado de faltante, para alcanzar el tamaño
              especificado. 
             Se puede definir una tupla o lista de 3 valores
              (R,G,B), del color a rellenar, o su nombre (en
@@ -418,12 +425,14 @@ def Resize_IMG(img,
              capaz de ser manipulado por matplotlib. 
             Si fill==True se rellena con negro.
             (tuple/list)
+    normed: Si la matriz de datos está normalizada a [0,1).
+            (bool)
     verb  : Imprimir los pasos realizados.
             (bool)
     """
     
     # Check
-    Check_IMG(img)
+    Check_IMG(img, normed=normed)
 
     # Width/Height
     ## Height
@@ -443,7 +452,10 @@ def Resize_IMG(img,
     
     
     # Working in IMAGE format
-    i = Image.fromarray((img*255).astype('uint8'))
+    if not normed:
+        i = Image.fromarray(img)
+    else:
+        i = Image.fromarray((img*255).astype('uint8'))
     
     # Verbose
     if verb:
@@ -498,7 +510,8 @@ def Resize_IMG(img,
         print('\n Tamaño final:', i.size)
         
     # Return to array
-    i = np.array(i)/255.
+    i = np.array(i)
+    if normed: i = i/255.
     
     
     return i
@@ -510,6 +523,7 @@ def Resize2IMGs(img1, img2,
                 resize_1=False, resize_2=False,
                 crop_1=False, crop_2=False,
                 fill_1=None, fill_2=None,
+                normed_1=False, normed_2=False,
                 verb=False):
     """
     Función para realizar edición de tamaño a 2 imágenes (arrays),
@@ -545,6 +559,10 @@ def Resize2IMGs(img1, img2,
     verb    : Imprimir los pasos realizados.
               (bool)
     """
+    
+    # Check
+    Check_IMG(img1)
+    Check_IMG(img2)
     
     # Width/Height
     ## Height
@@ -584,8 +602,8 @@ def Algebra_IMGs(img1, img2,
      imágenes (ndarrays). Ambos array deben tener el mismo
      tamaño.
     Las operaciones (píxel a píxel) disponibles son:
-        - suma    ['suma',      'sum'       ]
-        - resta   ['resta',     'subtract'  ]
+        - suma    ['suma',      'sum',       '+']
+        - resta   ['resta',     'subtract',  '-']
         - lighter ['mas_claro', 'if_lighter']
         - darker  ['mas_oscuro','if_darker' ]
     Los formatos (cierres) disponible son:
@@ -660,8 +678,8 @@ def Algebra_IMGs(img1, img2,
     if img1.shape!=img2.shape:
         raise ValueError('ERROR. Las imágenes deben'+\
                          ' tener el mismo tamaño.')
-    ops = ['suma',      'sum', 
-           'resta',     'subtract',
+    ops = ['suma',      'sum',        '+',
+           'resta',     'subtract',   '-',
            'mas_claro', 'if_lighter', 
            'mas_oscuro','if_darker']
     
@@ -675,27 +693,27 @@ def Algebra_IMGs(img1, img2,
     if op not in ops: 
         raise ValueError('Operación mal definida.')
         
-    if (op in ops[:4]) and (fo not in fos):
+    if (op in ops[:6]) and (fo not in fos):
         raise ValueError('Formato mal (o no) definido.')
-    if (op in ops[4:]) and (fo is not None):
+    if (op in ops[6:]) and (fo is not None):
         raise ValueError('Operaciones "if" deben'+\
                          ' tener formato None.')
+      
+    Check_IMG(img1, RGB=True, normed=normed_1)
+    Check_IMG(img2, RGB=True, normed=normed_2)
     
     if not normed_1: img1 = img1/255.
     if not normed_2: img2 = img2/255.
     
-    Check_IMG(img1)
-    Check_IMG(img2)
-    
     # RGB
     if fo in fos[:4]:
-        if   op in ops[ :2]: img = img1 + img2 # sum
-        elif op in ops[2:4]: img = img1 - img2 # sub
+        if   op in ops[ :3]: img = img1 + img2 # sum
+        elif op in ops[3:6]: img = img1 - img2 # sub
         if fo in fos[:2]: ## clamp
             img[img>1] = 1
             img[img<0] = 0
         else:             ## average
-            if op in ops[2:4]: img += 1 # if sub
+            if op in ops[3:6]: img += 1 # if sub
             img /= 2.
     
     #YIQ
@@ -708,25 +726,25 @@ def Algebra_IMGs(img1, img2,
         Y2   = img2[:,:,0]
         I2   = img2[:,:,1]
         Q2   = img2[:,:,2]
-        if op in ops[4:]: # lighter/darker
-            if op in ops[4:6]:
+        if op in ops[6:]: # lighter/darker
+            if op in ops[6:8]: # lighter
                 img = np.maximum(img1, img2)
-            else:
+            else:              # darker
                 img = np.minimum(img1, img2)
             msk = np.equal(img [:,:,0], Y1)
             img[:,:,1] = I1 * msk + I2 * ~msk
             img[:,:,2] = Q1 * msk + Q2 * ~msk
         else:
-            if   op in ops[:2]: # sum
+            if   op in ops[:3]: # sum
                 img        = img1 + img2
                 img[:,:,1] = (Y1 * I1 + Y2 * I2)/(Y1 + Y2)
                 img[:,:,2] = (Y1 * Q1 + Y2 * Q2)/(Y1 + Y2)
-            elif op in ops[2:4]: #sub
+            elif op in ops[3:6]: # sub
                 img        = img1 - img2
                 img[:,:,1] = (Y1 * I1 - Y2 * I2)/(Y1 - Y2)
                 img[:,:,2] = (Y1 * Q1 - Y2 * Q2)/(Y1 - Y2)
             if fo in fos[6:]:
-                if op in ops[2:4]: img[:,:,0] += 1 # if sub
+                if op in ops[3:6]: img[:,:,0] += 1 # if sub
                 img[:,:,0] /= 2. ## average
             img[:,:,0][img[:,:,0] < 0    ] = 0          #Y
             img[:,:,0][img[:,:,0] > 1    ] = 1          #Y
@@ -738,7 +756,7 @@ def Algebra_IMGs(img1, img2,
         img = YIQtoRGB(img, normed=True, verb=verb)
     
     # Final re-check
-    Check_IMG(img)
+    Check_IMG(img, RGB=True, normed=True)
     
     # Verb
     if verb: print('Se realizó la operación:', op,'\n\t'+\
@@ -746,3 +764,366 @@ def Algebra_IMGs(img1, img2,
     
         
     return img
+
+
+
+def Combinatoria(n, k):
+    """
+    Función para realizar la operación de combinatoria:
+    (n | k)
+    """
+    up = np.math.factorial(n)
+    do = np.math.factorial(k)*np.math.factorial(n-k)
+    
+    return up/do
+
+
+
+def Filter(name, n=3, norm=True, verb=True, **kwargs):
+    """
+    Función para obtener la matriz de algún filtro.
+    
+    Parámetros:
+    -----------
+    
+    name  : Nombre del filtro. 
+            Los posibles son:
+             - 'identidad', 'identity'
+             - 'plano', 'plain' 
+             - 'gauss', 'gaussiano', 'gaussian' 
+             - 'bartlett'
+             - 'laplace', 'laplaciano', 'laplacian'
+             - 'laplace_bordes', 'laplaciano_bordes', 'laplacian_edges'
+             - 'sobel_norte', 'sobel_north'
+             - 'sobel_sur', 'sobel_south' 
+             - 'sobel_este', 'sobel_east' 
+             - 'sobel_oeste', 'sobel_west'
+             - 'sobel_noroeste', 'sobel_northwest', 'sobel_no', 'sobel_nw'
+             - 'sobel_noreste', 'sobel_northeast', 'sobel_ne'
+             - 'sobel_suroeste', 'sobel_southwest', 'sobel_so', 'sobel_sw'
+             - 'sobel_sureste', 'sobel_southeast', 'sobel_se'
+             - 'linea_horizontal', 'linea_h'
+             - 'linea_vertical', 'linea_v'
+             - 'linea_45'
+             - 'linea_135' 
+             - 'combinado', 'combined' [Requiere kwargs]
+            (str)
+    n     : Ancho de matriz de filtro. (int)
+    norm  : Normalizar el filtro, si la suma de sus valores es > 1. (bool)
+    verb  : Imprimir mensaje de filtro creado.
+    
+    
+    kwargs: En caso de seleccionar operación: 'combinado' o 'combined', 
+             se ejecuta la función FilterCombine:
+                 filtro = filter_1 * c_1 'op' filter_2 * c_2
+            Se debe introducir entonces:
+                filtro_1: Nombre del filtro 1.
+                filtro_2: Nombre del filtro 2.
+                n_1     : Ancho de matriz de filtro 1.
+                n_2     : Ancho de matriz de filtro 2.
+                c_1     : Factor multiplicativo de matriz 1.
+                c_2     : Factor multiplicativo de matriz 2.
+                op      : Operación a realizar:
+                            - 'suma',           'sum',      '+',
+                            - 'resta',          'subtract', '-'
+                            - 'multiplicacion', 'product',  '*'
+                            - 'division',       'divide',   '/'
+                            
+            En caso de seleccionar operación: 'propio' o 'custom',
+             se debe introducir como argumento:
+                 matrix: Array con el filtro hecho manualmente.
+    """
+    
+    # Check
+    names = ['identidad', 'identity',
+             'plano', 'plain', 
+             'gauss', 'gaussiano', 'gaussian', 
+             'bartlett',
+             'laplace', 'laplaciano', 'laplacian',
+             'laplace_bordes', 'laplaciano_bordes',
+                 'laplacian_edges',
+             'sobel_norte', 'sobel_north',
+             'sobel_sur', 'sobel_south', 
+             'sobel_este', 'sobel_east', 
+             'sobel_oeste', 'sobel_west',
+             'sobel_noroeste', 'sobel_northwest',
+                 'sobel_no', 'sobel_nw',
+             'sobel_noreste', 'sobel_northeast',
+                 'sobel_ne',
+             'sobel_suroeste', 'sobel_southwest',
+                 'sobel_so', 'sobel_sw',
+             'sobel_sureste', 'sobel_southeast',
+                 'sobel_se',
+             'linea_horizontal', 'linea_h',
+             'linea_vertical', 'linea_v',
+             'linea_45',
+             'linea_135', 
+             'combinado', 'combined',
+             'propio', 'custom']
+    
+    if name not in names:
+        raise ValueError('Nombre erróneo.')
+    if ((n<1) or isinstance(n, float) or (n%2==0)):
+        raise ValueError('n debe ser un entero'+\
+                         'positivo impar > 1.')      
+    
+    # Definimos Filtro
+    ## Identidad
+    if   name in names[:2]: 
+        filtro = np.zeros((n,n))
+        filtro[n//2, n//2] = 1
+    ## Plano
+    elif name in names[2:4]:
+        filtro = np.ones((n,n))
+    ## Gauss
+    elif name in names[4:7]: 
+        aux = []
+        for i in range (n//2 + 1):
+            aux.append(Combinatoria(n-1,i))
+        aux += aux[-2::-1]
+        aux = np.array(aux, dtype=int)
+        filtro = np.matmul(aux.T[:, np.newaxis],
+                           aux[np.newaxis,:])
+    ## Bartlett
+    elif name==names[7]:
+        aux = []
+        for i in range (1, n//2 + 2):
+            aux.append(i)
+        aux += aux[-2::-1]
+        aux = np.array(aux, dtype=int)
+        filtro = np.matmul(aux.T[:, np.newaxis],
+                           aux[np.newaxis,:])
+    ## Laplace (esquinas -1)
+    elif name in names[8:11]:
+        filtro = np.ones((n,n)) * -1
+        filtro[n//2, n//2] = n*n - 1
+    ## Laplace (esquinas 0)
+    elif name in names[11:14]:
+        filtro = np.zeros((n,n))
+        filtro[n//2, :] = filtro[:, n//2] = np.ones(n) * -1
+        filtro[n//2, n//2] = 2*n - 2
+    ## Direccionales NESO (Sobel)
+    elif name in names[14:22]:
+        aux  = np.arange(-(n//2),n//2+1)[:, np.newaxis]
+        aux  = np.repeat(aux, n, axis=1)
+        aux0 = aux.copy()
+        aux[:,n//2] *=2
+        if name in names[14:16]: # N
+            filtro = np.flip(aux, axis=0) 
+        if name in names[16:18]: # S
+            filtro = aux
+        if name in names[18:20]: # E
+            filtro = aux.T
+        if name in names[20:22]: # O
+            filtro = np.flip(aux.T, axis=1) 
+    ## Direccionales DIAG (Sobel)
+    elif name in names[22:36]: 
+        aux = np.zeros((n,n))
+        for i in range(n):
+            for j in range(n):
+                aux[i,j] = i - j
+        if name in names[22:26]: # NO
+            filtro = np.flip(aux.T, axis=1)
+        if name in names[26:29]: # NE
+            filtro = aux.T
+        if name in names[29:33]: # SO
+            filtro = aux
+        if name in names[33:36]: # SE
+            filtro = np.flip(aux, axis=1)
+    # Líneas
+    elif name in names[36:42]:
+        if n!=3: print('Solo hay disponibles kernels de'+\
+                      ' líneas de tamaño 3x3.')
+        aux = np.ones((3,3))*-1
+        if name in names[36:38]: # Horiz
+            aux[1] = 2
+            filtro = aux
+        if name in names[38:40]: # Verti
+            aux[:,1] = 2
+            filtro   = aux
+        if name == 'linea_45':   # 45 grados
+            np.fill_diagonal(aux, 2)
+            filtro = np.flip(aux, axis=1)
+        if name == 'linea_135':  # 135 grados
+            np.fill_diagonal(aux, 2)
+            filtro = aux
+    # Combinado (Para posible pasa banda)
+    elif name in names[42:44]: 
+        filtro = FilterCombine(**kwargs, normed=False)
+    # Propio
+    elif name in names[44:]:
+        filtro = kwargs['matrix']
+        
+    # Normalize
+    if (norm) & (filtro.sum()>0):
+        filtro = filtro / filtro.sum()
+    
+    # Verbose
+    if verb & (name not in names[42:]):
+        print('Se generó un filtro "{}" {}x{}'.format(
+                name, n,n))
+        
+    return filtro
+
+
+
+def FilterCombine(filter_1='gauss', filter_2='gauss',
+                  n_1=5, n_2=3,
+                  c_1=1, c_2=1,
+                  op='*',
+                  normed=False, 
+                  verb=True):
+    """
+    Función para realizar operación entre 2 filtros.
+    De esta forma se podría obtener un filtro PasaBanda.
+    La operación es:
+        filtro = filter_1 * c_1 'op' filter_2 * c_2
+            donde 'OP' puede ser:
+            - 'suma',           'sum',      '+',
+            - 'resta',          'subtract', '-'
+            - 'multiplicacion', 'product',  '*'
+            - 'division',       'divide',   '/'
+            
+    Se normaliza la matriz al finalizar, si la suma es > 0.
+    
+    Parámetros:
+    ----------
+    filter_1: Nombre del filtro 1 a utilizar. Debe ser 
+               entendido por la función Filter. (str)
+    filter_2: Nombre del filtro 2 a utilizar. Debe ser 
+               entendido por la función Filter. (str)
+    n_1     : Ancho de matriz de filtro 1. (int)
+    n_2     : Ancho de matriz de filtro 2. (int)
+    c_1     : Constante multiplicativa de la matriz
+               de filtro 1. (int)
+    c_2     : constante multiplicativa de la matriz
+               de filtro 2. (int)
+    op      : Operación algebráica a realizar.
+               Las posibles opciones son:
+                 - 'suma',           'sum',      '+'
+                 - 'resta',          'subtract', '-'
+                 - 'multiplicacion', 'product',  '*'
+                 - 'division',       'divide',   '/'
+               (str)
+    normed  : Normalizar el filtro, si la suma de sus
+               valores es > 1. (bool)
+    verb     : Imprimir mensaje de filtro creado.
+    """
+    
+    # Check
+    ops = ['suma',           'sum',      '+',
+           'resta',          'subtract', '-',
+           'multiplicacion', 'product',  '*',
+           'division',       'divide',   '/']
+
+    if op not in ops:
+        raise ValueError('Operación errónea.')
+
+    # Get matrices
+    f1 = Filter(name=filter_1, n=n_1, norm=False)
+    f2 = Filter(name=filter_2, n=n_2, norm=False)
+    
+    # Set same size
+    if n_1>n_2:
+        f2 = np.pad(f2, (n_1-n_2)//2, constant_values=0)
+    else:
+        f1 = np.pad(f1, (n_2-n_1)//2, constant_values=0)
+        
+    # Operation
+    if   op in ops[:3]:
+        filtro = f1*c_1   +  f2*c_2
+        if verb: ope = '+'
+    elif op in ops[3:6]: 
+        filtro = f1*c_1   -  f2*c_2
+        if verb: ope = '-'
+    elif op in ops[6:9]: 
+        filtro = (f1*c_1) * (f2*c_2)
+        if verb: ope = '*'
+    else:                
+        filtro = (f1*c_1) / (f2*c_2)
+        if verb: ope = '/'
+    
+    
+    # Normalize
+    if (normed) & (filtro.sum()>0):
+        filtro = filtro / filtro.sum()
+    
+    # Verbose
+    if verb: 
+        print('Se realizó la operación:')
+        print('\t filtro = ({} * {}) {} ({} * {})'.format(
+                filter_1, c_1, ope, filter_2, c_2))
+        
+    
+    
+    return filtro
+
+
+
+def Chunks(img, shape, verb=False):
+    """
+    Función para generar chunks de una Imagen, 
+     de un tamaño específico.
+    
+    Parámetros:
+    -----------
+    img  : Array 2D a generar chuncks.
+    shape: Tupla/Arary 2D con el shape de los
+            chunks a generar.
+    verb : Imprimir mensaje.
+    """
+    
+    if len(img.shape)!=2: 
+        raise ValueError('img debe estar en 2D')
+    if len(shape)!=2: 
+        raise ValueError('shape debe tener len==2')    
+        
+    # Tamaño (imagen, chunks)    
+    ch_shape = tuple(np.subtract(
+                    img.shape, shape) + 1) + shape
+    # Tupla de bytes para recorrer
+    strides  = img.strides + img.strides
+    # Recorremos -> Generamos chunks
+    chunks   = np.lib.stride_tricks.as_strided(
+                        img, ch_shape, strides)    
+    
+    # Verbose
+    if verb: print('Se han creado chunks de la imagen'+\
+                   ' de tamaño:\n {} x {}'.format(
+                  chunks.shape[0], chunks.shape[1]))
+    
+    
+    return chunks
+
+
+
+def EnlargeImgY(Y, pad=0):
+    """
+    Función para crear una imagen que sa la extensión de bordes
+     de otra imagen. Debe ser un array 2D.
+    
+    Parámetros:
+    -----------
+    Y  : Array 2D con la imagenm a agrandar. 
+    pad: Cantidad de píxeles a agregar a cada lado.
+          En caso de uso para filtro, suele ser: (len(filtro) - 1) // 2"""
+    
+    # Create new array
+    Y_m  = np.pad(Y, pad, constant_values=0)
+    hn   = Y_m.shape[0]
+    wn   = Y_m.shape[1]
+
+    # New edges
+    Y_m[:pad        , pad:(wn-pad)] = np.repeat(Y[0 , :][np.newaxis,:], pad, axis=0)
+    Y_m[pad:(hn-pad), (wn-pad):   ] = np.repeat(Y[: ,-1][:,np.newaxis], pad, axis=1)
+    Y_m[(hn-pad):   , pad:(wn-pad)] = np.repeat(Y[-1, :][np.newaxis,:], pad, axis=0)
+    Y_m[pad:(hn-pad), :pad        ] = np.repeat(Y[: , 0][:,np.newaxis], pad, axis=1)
+
+    # New corners
+    Y_m[:pad        , :pad     ] = Y[0 , 0]
+    Y_m[:pad        , (wn-pad):] = Y[0 ,-1]
+    Y_m[(hn-pad):   , (wn-pad):] = Y[-1,-1]
+    Y_m[(hn-pad):   , :pad     ] = Y[-1, 0]
+    
+    
+    return Y_m
