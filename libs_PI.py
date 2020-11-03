@@ -1,6 +1,7 @@
 import numpy as np
 from PIL import Image
 import seaborn as sns
+from matplotlib import colors
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
@@ -786,7 +787,7 @@ def Filter(name, n=3, norm=True, verb=True, **kwargs):
     Parámetros:
     -----------
     
-    name  : Nombre del filtro. 
+    name  : Nombre del filtro.  (str)
             Los posibles son:
              - 'identidad', 'identity'
              - 'plano', 'plain' 
@@ -807,7 +808,6 @@ def Filter(name, n=3, norm=True, verb=True, **kwargs):
              - 'linea_45'
              - 'linea_135' 
              - 'combinado', 'combined' [Requiere kwargs]
-            (str)
     n     : Ancho de matriz de filtro. (int)
     norm  : Normalizar el filtro, si la suma de sus valores es > 1. (bool)
     verb  : Imprimir mensaje de filtro creado.
@@ -1127,3 +1127,54 @@ def EnlargeImgY(Y, pad=0):
     
     
     return Y_m
+
+
+
+def RGBAtoRGB(RGBA, BgC='white', 
+              normed=True, verb=False):
+    """
+    Función para pasar de RGBA a RGB.
+    
+    Parámetros:
+    ----------
+    RGBA  : Matriz (ndarray) con los valores RGBA de los
+             píxeles a transformar.
+             RGBA.shape == [Alto, Ancho, [R,G,B,A]]
+    BgC   : Color de fondo de la imagen. Puede ser un string con el
+             nombre de un color (en inglés) interpretable por
+             matplotlib.colors (Ej. "white", "red", ...), o un 
+             array/tupla/lsita de dimensión 3 con las 3 componentes
+             RGB del fondo. 
+            En caso de componentes RGB, NO DEBEN ESTAR NORMALIZADAS,
+             ya que el normalizado se aplica en el código.
+    normed: Si la matriz de datos RGBA ya está normalizada a [0,1).
+    verb  : Imprimir mensaje al realizar la transformación.
+    """
+    
+    # Check
+    ## Size
+    size = RGBA.shape
+    if (2>len(size)) | (len(size)>3):
+        raise ValueError('El array no posee la dimensión adecuada.')
+    if (len(size)==3) & (size[2]==3):
+        raise ValueError('La imagen ya está en RGB')
+    ## Background
+    if isinstance(BgC, str): BgC = colors.to_rgb(BgC)
+    elif isinstance(BgC, (tuple, np.ndarray, list)):
+        BgC = np.array(BgC)/255.
+        if np.shape(BgC)[0]!=3: 
+            raise ValueError('BgC debe tener dimensión 3. [RGB]')
+    else: raise TypeError('Formato de BgC erróneo.')
+    # Transform
+    if not normed: RGBA = RGBA / 255.
+    RGB = np.zeros((RGBA.shape[0], RGBA.shape[1], 3))
+    RGB[:,:,0] = ((1 - RGBA[:,:,3]) * BgC[0]) + (RGBA[:,:,3] * RGBA[:,:,0])
+    RGB[:,:,1] = ((1 - RGBA[:,:,3]) * BgC[1]) + (RGBA[:,:,3] * RGBA[:,:,1])
+    RGB[:,:,2] = ((1 - RGBA[:,:,3]) * BgC[2]) + (RGBA[:,:,3] * RGBA[:,:,2])
+            
+    # Verbose
+    if verb: print('Se ha transformado de RGBA a RGB, con Fondo ='+\
+                   ' {}'.format(BgC))
+        
+    
+    return RGB    
