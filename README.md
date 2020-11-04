@@ -8,7 +8,14 @@ En este repositorio se encuentran los elementos de la materia: **Procesamiento d
 
 ## Ejecución:
 
-- Opción 1: Descargar o clonar el repositorio, y ejecutar los ``.ipynb`` en el entorno deseado.
+- Opción 1: Descargar o clonar el repositorio, y ejecutar los ``.ipynb`` en el entorno deseado. (_python >= 3.6.9_)
+
+    Librerías necesarias:
+    
+    - matplotlib >= 3.2.2
+    - numpy      >= 1.18.5
+    - Pillow     >= 7.0.0
+    - seaborn    >= 0.11.0
 
 - Opción 2: Ejecutar los ``.ipynb`` desde *COLAB*:
 
