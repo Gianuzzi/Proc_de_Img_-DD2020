@@ -3,7 +3,8 @@
 **Repositorio con cosas de la materia Procesamiento de Imágenes.**
 
 ## Resumen
-En este repositorio se encuentran los elementos de la materia: **Procesamiento de Imágenes**.
+En este repositorio se encuentran los ejercicios resueltos de la materia: **Procesamiento de Imágenes**, 
+de la Diplomatura en Ciencia de Datos 2020.
 
 
 ## Ejecución:
@@ -26,3 +27,5 @@ En este repositorio se encuentran los elementos de la materia: **Procesamiento d
     -[Ejercicio 1.4](https://colab.research.google.com/github/Gianuzzi/Proc_de_Img_-DD2020/blob/main/Ejercicio1.4.ipynb)
     
     -[Ejercicio 2.1](https://colab.research.google.com/github/Gianuzzi/Proc_de_Img_-DD2020/blob/main/Ejercicio2.1.ipynb)
+
+    -[Ejercicio 2.2](https://colab.research.google.com/github/Gianuzzi/Proc_de_Img_-DD2020/blob/main/Ejercicio2.2.ipynb)

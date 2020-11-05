@@ -861,11 +861,11 @@ def Filter(name, n=3, norm=True, verb=True, **kwargs):
              'combinado', 'combined',
              'propio', 'custom']
     
-    if name not in names:
-        raise ValueError('Nombre erróneo.')
     if ((n<1) or isinstance(n, float) or (n%2==0)):
         raise ValueError('n debe ser un entero'+\
-                         'positivo impar > 1.')      
+                         ' positivo impar > 1.')  
+    if name not in names:
+        raise ValueError('Nombre erróneo.')    
     
     # Definimos Filtro
     ## Identidad
@@ -1068,13 +1068,17 @@ def Chunks(img, shape, verb=False):
     Parámetros:
     -----------
     img  : Array 2D a generar chuncks.
-    shape: Tupla/Arary 2D con el shape de los
-            chunks a generar.
+    shape: Tupla/Lista/Arary 2D con el shape de
+            los chunks a generar.
     verb : Imprimir mensaje.
     """
     
+    # Check
+    ## IMG
     if len(img.shape)!=2: 
         raise ValueError('img debe estar en 2D')
+    ## SHAPE
+    shape = tuple(shape)
     if len(shape)!=2: 
         raise ValueError('shape debe tener len==2')    
         
@@ -1104,7 +1108,7 @@ def EnlargeImgY(Y, pad=0):
     
     Parámetros:
     -----------
-    Y  : Array 2D con la imagenm a agrandar. 
+    Y  : Array 2D con la imagen a agrandar. 
     pad: Cantidad de píxeles a agregar a cada lado.
           En caso de uso para filtro, suele ser: (len(filtro) - 1) // 2"""
     
@@ -1177,4 +1181,213 @@ def RGBAtoRGB(RGBA, BgC='white',
                    ' {}'.format(BgC))
         
     
-    return RGB    
+    return RGB
+
+
+
+def MorfOp(Y, n=0, op=None, verb=False):
+    """
+    Función para aplicar una operación morfológica
+    a una imagen 2D normalizada en luminancias.
+    Las operaciones disponibles son:
+        - 'identidad'
+        - 'erosion'
+        - 'dilatacion'
+        - 'apertura'
+        - 'cierre'
+        - 'borde_exterior', 'borde_ext'
+        - 'borde_interior', 'borde_int'
+        - 'mediana', median'
+        - 'top_hat'
+        - 'bottom_hat'
+        - 'gradiente'
+        - 'media', 'mean'
+    
+    Parámetros:
+    -----------
+    Y   : Array 2D con la imagen a la cual se aplicará
+           la operación. Debe estar normalizada al 
+           rango [0,1). (ndarray 2D)
+    n   : Ancho de la matriz del kernel a utilizar. 
+           (int)
+    op  : Nombre de la operación a realizar, entre
+           las posibles. (str)
+    verb: Imprimir mensaje al realizar la operación.
+           (bool)
+    """
+    
+    # Check
+    ops   = ['identidad',
+             'erosion',
+             'dilatacion',
+             'apertura',
+             'cierre',
+             'borde_exterior', 'borde_ext',
+             'borde_interior', 'borde_int',
+             'mediana', 'median',
+             'top_hat',
+             'bottom_hat',
+             'gradiente',
+             'media', 'mean']
+    
+    if op not in ops:
+        raise ValueError('Operación errónea.')
+    if ((n<1) or isinstance(n, float) or (n%2==0)):
+        raise ValueError('n debe ser un entero'+\
+                         ' positivo impar > 1.') 
+        
+    # Enlarge Y (to avoid losign edges)
+    Y_e = EnlargeImgY(Y, pad=((n - 1) // 2))
+    
+    # Chunks
+    chunks = Chunks(Y_e, [n,n])
+    
+    # Operate
+    if   op == 'identidad':  # Y
+        Y_m = Y
+    elif op == 'erosion':    # min(Y)
+        Y_m = np.min(chunks, axis=(2,3))
+    elif op == 'dilatacion': # max(Y)
+        Y_m = np.max(chunks, axis=(2,3))
+    elif op == 'apertura':   # max(min(Y))
+        Y_aux = np.min(chunks, axis=(2,3))
+        c_aux = Chunks(Y_aux, [n,n])
+        Y_m   = np.max(c_aux, axis=(2,3))
+    elif op == 'cierre':     # min(max(Y))
+        Y_aux = np.max(chunks, axis=(2,3))
+        c_aux = Chunks(Y_aux, [n,n])
+        Y_m   = np.min(c_aux, axis=(2,3))
+    elif op in ops[5:7]:     # max(Y) - Y
+        Y_aux = np.max(chunks, axis=(2,3))
+        Y_m   = Y_aux - Y  # Y - min(Y)
+    elif op in ops[7:9]:
+        Y_aux = np.min(chunks, axis=(2,3))
+        Y_m   = Y - Y_aux
+    elif op in ops[9:11]:    # median(Y)
+        Y_m = np.median(chunks, axis=(2,3))
+    elif op == 'top_hat':    # Y - max(min(Y))
+        Y_aux = MorfOp(Y_e, n=n, op='apertura')
+        Y_m   = Y - Y_aux
+    elif op == 'bottom_hat':    # Y - min(max(Y))
+        Y_aux = MorfOp(Y_e, n=n, op='cierre')
+        Y_m   = Y_aux - Y
+    elif op == 'gradiente':  # max(Y) - min(Y)
+        Y_aux_1 = np.min(chunks, axis=(2,3))
+        Y_aux_2 = np.max(chunks, axis=(2,3))
+        Y_m     = Y_aux_2 - Y_aux_1
+    elif op in ops[-2:]:     # mean(Y)
+        Y_m = np.mean(chunks, axis=(2,3))
+        
+    # Clamp
+    Y_m[Y_m < 0] = 0
+    Y_m[Y_m > 1] = 1
+    
+    # Verbose
+    if verb: print('Se ha aplicado la operación'+\
+                   ' {}, con un kernel {}x{}.'.format(
+                    op, n, n))
+    
+    
+    return Y_m
+
+
+
+def ApplyMorfOp(Y):
+    """
+    Función para ejecutar MorfOp() de forma
+    recursiva e interactiva.
+    
+    Parámetros:
+    -----------
+    Y : Array 2D con imagen en luminancias
+         normalizado. (ndarray)
+    """
+    
+    # Y1 and Y2
+    Y1  = Y.copy()
+    Y2  = Y.copy()
+    # Yes/No
+    yn  = 'y'
+    yns = ['y', 'yes', 's', 'si', 'n', 'no',]
+    # Tries
+    tries = 0
+    trn   = 0
+    
+    while True:
+        # Setting n
+        if trn>0:
+            print('    {} error{}'.format(
+                trn, 'es' if trn>1 else ''))
+            if trn>=3:
+                print(    'Saliendo.')
+                return Y2
+        n = input('Introduzca el ancho del kernel:')
+        try:
+            n = int(n)
+        except Exception as e:
+            trn += 1
+            print(e)
+            continue
+        if ((n<1) or (n%2==0)):
+            trn += 1
+            print('n debe ser un entero'+\
+                         ' positivo impar > 1.')
+            continue
+        else:
+            break
+            
+    while True:
+        # Operate
+        op = input('Introduzca la operación a realizar:')
+        op = op.replace(" ", '_').replace("'", '').lower()
+        if op == 'identidad': # back to original
+            print('Retornando a imagen original.')
+            Y1 = Y.copy()  
+        try:
+            Y2    = MorfOp(Y1, n=n, op=op, verb=True)
+            tries = 0
+        except Exception as e:
+            tries += 1
+            print(e)
+            print('    {} error{}'.format(
+                tries, 'es' if tries>1 else ''))
+            if tries>=3:
+                print(    'Saliendo.')
+                return Y2
+            continue
+
+        # Plot
+        fig, axs = plt.subplots(1,3, sharey=True,
+                                dpi=150, figsize=(12,4))
+        fig.suptitle('Operación morfológica en luminancias')
+        fig.tight_layout()
+        axs[0].set_title('Imagen original')
+        axs[0].imshow(Y, plt.cm.gray)
+        axs[0].axis('off')  
+        axs[1].set_title('Imagen utilizada para modificación')
+        axs[1].imshow(Y1, plt.cm.gray)
+        axs[1].axis('off')
+        axs[2].set_title('Imagen modificada por "{}"'.format(op))
+        axs[2].imshow(Y2, plt.cm.gray)
+        axs[2].axis('off')    
+        plt.show()
+
+        # Y1 for reusing
+        Y1 = Y2.copy()
+
+        # Again?
+        cont = 0
+        while True:
+            yn = input('¿Desea continuar? [Y/N]')
+            yn = yn.lower()
+            if   yn not in yns:
+                cont += 1
+                print('    No comprendo.')
+                if cont >=3:
+                    print('    3 errores ocurridos.')
+                    print(    'Saliendo.')
+                    return Y2
+            elif yn in yns[:4]: break
+            else: 
+                print('Muchas gracias.')
+                return Y2
