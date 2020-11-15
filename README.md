@@ -9,7 +9,7 @@ de la Diplomatura en Ciencia de Datos 2020.
 
 ## Ejecución:
 
-- Opción 1: Descargar o clonar el repositorio, y ejecutar los ``.ipynb`` en el entorno deseado. (_python >= 3.6.9_)
+- Opción 1: Descargar o clonar el repositorio, y ejecutar los ``.ipynb`` en el entorno deseado. (_python >= 3.6_)
 
     Librerías necesarias:
     
