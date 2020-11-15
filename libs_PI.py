@@ -1,3 +1,4 @@
+import time
 import numpy as np
 from PIL import Image
 import seaborn as sns
@@ -1371,6 +1372,8 @@ def ApplyMorfOp(Y):
         axs[2].imshow(Y2, plt.cm.gray)
         axs[2].axis('off')    
         plt.show()
+        
+        time.sleep(2) # time for showing image (COLAB bug)
 
         # Y1 for reusing
         Y1 = Y2.copy()
