@@ -1,14 +1,11 @@
-import time
+# Libs
 import numpy as np
-from PIL import Image
-import seaborn as sns
 from matplotlib import colors
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
-sns.set()
 
-
+# Funciones
 
 def Check_IMG(IMG, RGB=False, YIQ=False, normed=False):
     """
@@ -63,8 +60,7 @@ def Check_IMG(IMG, RGB=False, YIQ=False, normed=False):
             raise ValueError('IMG posee componente Q < {}'.format(-LimQ))
         if np.any(IMG[:,:,2] > LimQ ):
             raise ValueError('IMG posee componente Q > {}'.format(LimQ))
-
-            
+ 
     return
 
 
@@ -100,7 +96,6 @@ def RGBtoYIQ(RGB, normed=False, verb=False):
 
     # Message
     if verb: print('Se ha transformado de RGB a YIQ')
-
 
     return YIQ
 
@@ -147,7 +142,6 @@ def ModifyYIQ(YIQ, alpha=1., beta=1., verb=False):
     if verb: print('Se ha multiplicado: Y * {} ; I * {} ; Q * {}'\
                     .format(alpha, beta, beta))
 
-
     return YIQ_m
 
 
@@ -188,7 +182,6 @@ def YIQtoRGB(YIQ, normed=False, verb=False):
     # Message
     if verb: print('Se ha transformado de YIQ a RGB')
 
-
     return RGB
 
 
@@ -221,7 +214,6 @@ def PiecewiseLinear(Y, Y_min=0, Y_max=1):
     Y_m[h]       = 1
     Y_m[~l & ~h] = (Y_m[~l & ~h] - Y_min)/ (Y_max - Y_min)
 
-    
     return Y_m
 
 
@@ -309,8 +301,7 @@ def ChangeY(Y, func=None, clamp=True, **kwargs):
         # Limits
         Y_m[Y_m > 1] = 1
         Y_m[Y_m < 0] = 0
-
-
+        
     return Y_m
 
 
@@ -452,8 +443,8 @@ def Resize_IMG(img,
     
     if verb: print('[Ancho, Alto] buscado:', w, h)   
     
-    
-    # Working in IMAGE format
+    # Working in PIL IMAGE format
+    from PIL import Image
     if not normed:
         i = Image.fromarray(img)
     else:
@@ -514,7 +505,6 @@ def Resize_IMG(img,
     # Return to array
     i = np.array(i)
     if normed: i = i/255.
-    
     
     return i
 
@@ -590,7 +580,6 @@ def Resize2IMGs(img1, img2,
                     fill=fill_2,
                     verb=verb)
     
-
     return i1, i2
 
 
@@ -764,7 +753,6 @@ def Algebra_IMGs(img1, img2,
     if verb: print('Se realizó la operación:', op,'\n\t'+\
                    'utilizando el ciere:', fo)
     
-        
     return img
 
 
@@ -1044,7 +1032,6 @@ def FilterCombine(filter_1='gauss', filter_2='gauss',
         filtro = (f1*c_1) / (f2*c_2)
         if verb: ope = '/'
     
-    
     # Normalize
     if (normed) & (filtro.sum()>0):
         filtro = filtro / filtro.sum()
@@ -1055,8 +1042,6 @@ def FilterCombine(filter_1='gauss', filter_2='gauss',
         print('\t filtro = ({} * {}) {} ({} * {})'.format(
                 filter_1, c_1, ope, filter_2, c_2))
         
-    
-    
     return filtro
 
 
@@ -1097,7 +1082,6 @@ def Chunks(img, shape, verb=False):
                    ' de tamaño:\n {} x {}'.format(
                   chunks.shape[0], chunks.shape[1]))
     
-    
     return chunks
 
 
@@ -1129,7 +1113,6 @@ def EnlargeImgY(Y, pad=0):
     Y_m[:pad        , (wn-pad):] = Y[0 ,-1]
     Y_m[(hn-pad):   , (wn-pad):] = Y[-1,-1]
     Y_m[(hn-pad):   , :pad     ] = Y[-1, 0]
-    
     
     return Y_m
 
@@ -1181,7 +1164,6 @@ def RGBAtoRGB(RGBA, BgC='white',
     if verb: print('Se ha transformado de RGBA a RGB, con Fondo ='+\
                    ' {}'.format(BgC))
         
-    
     return RGB
 
 
@@ -1288,7 +1270,6 @@ def MorfOp(Y, n=0, op=None, verb=False):
                    ' {}, con un kernel {}x{}.'.format(
                     op, n, n))
     
-    
     return Y_m
 
 
@@ -1303,6 +1284,9 @@ def ApplyMorfOp(Y):
     Y : Array 2D con imagen en luminancias
          normalizado. (ndarray)
     """
+    
+    # For COLAB bug
+    import time
     
     # Y1 and Y2
     Y1  = Y.copy()
@@ -1341,9 +1325,10 @@ def ApplyMorfOp(Y):
         # Operate
         op = input('Introduzca la operación a realizar:')
         op = op.replace(" ", '_').replace("'", '').lower()
-        if op == 'identidad': # back to original
+        if op in ['identidad', 'original']: # back to original
             print('Retornando a imagen original.')
-            Y1 = Y.copy()  
+            Y1 = Y.copy()
+            op = 'identidad'
         try:
             Y2    = MorfOp(Y1, n=n, op=op, verb=True)
             tries = 0
@@ -1394,3 +1379,284 @@ def ApplyMorfOp(Y):
             else: 
                 print('Muchas gracias.')
                 return Y2
+
+    return # Unused
+            
+            
+            
+def Manual_Resize(Y, new_shape='x1', method='nearest', 
+                  sp=False, verb=True):
+    """
+    Función para cambiar el tamaño de una imagen 
+    en luminancias.
+    
+    Parámetros:
+    -----------
+    Y         : Imagen 2-D con luminancias normalizadas. 
+                (ndarray)
+    new_shape : Tamaño nuevo de la imagen buscada. 
+                 Puede ser una tupla/lista/array con 2
+                 elementos (Alto, Ancho) correspondientes
+                 al tamaño nuevo, o puede ser un escalar
+                 correspondiente al factor de multiplicación
+                 de tamaño de la imagen original. También
+                 puede ser un string de con formato 'x{factor}'
+                 (anteponiendo una x al factor). [Default='x1']
+                 Ej: new_shape = [10, 7] # Tamaño nuevo: (10, 7)
+                 Ej: new_shape = 1.5     # Tamaño nuevo: tamaño viejo * 1.5 
+                 Ej: new_shape = 'x0.4'  # Tamaño nuevo: tamaño viejo * 0.4
+    method    : Método a utlizar.
+                 Los disponibles son:
+                 - 'nn', 'nearest', 'cercanos', 'vc'          # Vecinos cercanos
+                 - 'linear', 'bilinear', 'lineal', 'bilineal' # Bilineal
+                 - 'cubic', 'bicubic', 'cubico', 'bicubico'   # Bicúbico
+                [Default='nearest']
+                (Si la imagen se agranda, los pixeles representando 
+                los bordes se obtienen por NN)
+    sp        : Utilizar el paquete de scipy.interpolate para
+                 realizar las interpolaciones. Caja negra,
+                 pero puede ser más rápido. [Default=False]
+                 (En caso de realizaar una interpolación
+                 bicúbica, sp debe ser True, ya que la 
+                 implementación manual aún no está terminada.)
+    verb      : Imprimir mensajes. [Default=True]
+    """
+    
+
+    # Check
+    Check_IMG(Y, RGB=True, normed=True)
+    h, w = Y.shape[0], Y.shape[1]
+    
+    ## New_shape
+    if isinstance(new_shape, (str, int, float)):
+        if isinstance(new_shape, str):
+            if new_shape[0] in ['x', 'X']:
+                N = np.float(new_shape[1:])
+            else:
+                raise ValueError('Error en string de '\
+                                 'new_shape')
+        else:
+            N = np.float(new_shape)
+        if N <= 0: 
+            raise ValueError('new shape debe ser factor '\
+                             'positivo')
+        hn = int(h * N)
+        wn = int(w * N)            
+
+    elif isinstance(new_shape, (list, tuple)):
+        ns = np.array(new_shape).astype(int)
+        if ns.shape != 2: 
+            raise ValueError('new_shape debe tener shape==2')
+        if (ns[0] < 2) | (ns[1] < 2):
+            raise ValueError('new_shape debe ser > 1 en x e y')
+        hn, wn = ns[0], ns[1]
+        
+    ## Methods
+    methods = ['nn', 'nearest', 'cercanos', 'vc',
+               'linear', 'bilinear', 'lineal', 'bilineal', 
+               'cubic', 'bicubic', 'cubico', 'bicubico']
+    method  = method.lower()
+    
+    if method not in methods: 
+        raise ValueError('Error en método')
+    
+    # Start
+    if verb:
+        print('Tamaño original de la imagen: '
+              ' ({}, {})'.format(h,w))
+        print('Tamaño final de la imagen   : '
+              ' ({}, {})'.format(hn,wn))
+        print('Método de interpolación utilizado: '\
+              ' {}'.format(method))
+        if sp: print('Se utiliza el paquete de SciPy.')
+    
+    # Grid Original
+    dy_or = 1/float(h)
+    dx_or = 1/float(w)
+    y_or  = np.arange(0, 1, dy_or) + dy_or * 0.5
+    x_or  = np.arange(0, 1, dx_or) + dx_or * 0.5
+
+    # Grid New
+    dy_ne = 1/float(hn)
+    dx_ne = 1/float(wn)
+    y_ne  = np.arange(0, 1, dy_ne) + dy_ne * 0.5
+    x_ne  = np.arange(0, 1, dx_ne) + dx_ne * 0.5
+    
+    if method in methods[:8]: # NN OR BILINEAR
+        
+        ## NN SciPy
+        if (method in methods[:4]) & sp:
+            from scipy.interpolate import RegularGridInterpolator
+            RGI   = RegularGridInterpolator((y_or, x_or), Y, 
+                                            method='nearest', 
+                                            bounds_error=False, 
+                                            fill_value=None)
+            grid  = np.array(np.meshgrid(y_ne, x_ne))
+            pts   = grid.T.reshape(-1, 2)
+            Y_new = RGI(pts).reshape(hn,wn)
+            
+            # Clamp
+            Y_new[Y_new < 0] = 0
+            Y_new[Y_new > 1] = 1
+            
+            # RETURN NN 
+            return Y_new
+        
+        ## Linear SciPy
+        if (method in methods[4:8]) & sp:
+            from scipy.interpolate import interp2d
+            I2D    = interp2d(x_or, y_or, Y, kind='linear')
+            Y_new  = I2D(x_ne, y_ne)
+            
+            # Clamp
+            Y_new[Y_new < 0] = 0
+            Y_new[Y_new > 1] = 1
+            
+            # RETURN BILINEAR
+            return Y_new
+        
+        # IF NOT SCIPY
+        
+        # Work in X
+        binx = np.searchsorted(x_or, x_ne, side='right') # right node N°
+        o1x       = binx == 0                            # left problems
+        binx[o1x] = 1
+        o2x       = binx == w                            # right problems
+        binx[o2x] = w - 1
+        x2   = x_or[binx]                                # right node pos
+        x1   = x2 - dx_or                                # left node pos
+        dx2  = x2 - x_ne                                 # distance to x2
+        dx1  = x_ne - x1                                 # distance to x1
+        binx[np.abs(dx1) < np.abs(dx2)] -= 1             # when NN is left
+
+        # Work in Y
+        biny = np.searchsorted(y_or, y_ne, side='right') # upper node N°
+        o1y       = biny == 0                            # upper problems
+        biny[o1y] = 1
+        o2y       = biny == h                            # lower problems
+        biny[o2y] = h - 1
+        y2   = y_or[biny]                                # lower node pos
+        y1   = y2 - dy_or                                # upper node pos
+        dy2  = y2 - y_ne                                 # distance to y2
+        dy1  = y_ne - y1                                 # distance to y1
+        biny[np.abs(dy1) < np.abs(dy2)] -= 1             # when NN is upper
+
+        # Create NEW MESHGRID
+        Bx, By = np.meshgrid(binx, biny)
+
+        # Create NN Image
+        Y_new  = Y[tuple([By,Bx])]
+
+        # RETURN IF NN
+        if method in methods[:4]: return Y_new
+        
+        # If not NN, then BILINEAR INTERPOLATION
+       
+        binx[np.abs(dx1) < np.abs(dx2)] += 1    # back to right node
+        biny[np.abs(dy1) < np.abs(dy2)] += 1    # back to lower node 
+
+        gx = (~o1x) & (~o2x) # points not outside x edges
+        gy = (~o1y) & (~o2y) # points not outside y edges
+
+        # bins x not in edges
+        binxg  = binx[gx]
+        dx2dx1 = np.array([dx2[gx], dx1[gx]]).T
+
+        # bins y not in edges
+        binyg  = biny[gy] 
+        dy2dy1 = np.array([dy2[gy], dy1[gy]])
+
+        # 4 points and matrix
+        x1, y1 = np.meshgrid(binxg-1, binyg-1)
+        x2, y1 = np.meshgrid(binxg,   binyg-1)
+        x1, y2 = np.meshgrid(binxg-1, binyg)
+        x2, y2 = np.meshgrid(binxg,   binyg)
+        matrix = np.array([
+                    [Y[tuple([y1,x1])], Y[tuple([y2,x1])]],
+                    [Y[tuple([y1,x2])], Y[tuple([y2,x2])]]
+                    ])
+        
+        # Offsets
+        of1x = o1x.sum()
+        of2x = o2x.sum()
+        of1y = o1y.sum()
+        of2y = o2y.sum()
+        
+        # Calculate matrix products
+        Y_new = np.einsum('ijk,ki->jk', np.einsum('ij,kijm->kjm',
+                                dy2dy1, matrix), dx2dx1)
+        
+        # Normalization
+        Y_new[of1y:(hn-of2y),of1x:(wn-of2x)] /= (dx_or * dy_or)
+        
+        # Clamp
+        Y_new[Y_new < 0] = 0
+        Y_new[Y_new > 1] = 1
+        
+        # RETURN BILINEAR
+        return Y_new
+    
+    else: # BICUBIC
+        
+        if sp: # Use scipy implementation
+            from scipy.interpolate import interp2d
+            I2D    = interp2d(x_or, y_or, Y, kind='cubic')
+            Y_new  = I2D(x_ne, y_ne)
+            
+            # Clamp
+            Y_new[Y_new < 0] = 0
+            Y_new[Y_new > 1] = 1
+            
+            # RETURN BICUBIC
+            return Y_new
+        
+        else:
+            raise Exception('Perdón, aún no está implementada '\
+                           'la interpolación bicúbica manual; '\
+                            'solo se encuentra la de SciPy '\
+                            'disponible por el momento. :(')
+            
+    return # Unused
+
+
+
+def ApplyManual_Resize(img, new_shape='x1',method='nearest',
+                       sp=False, verb=True):
+    """
+    Función para ejecutar Manual_Resize() a una imagen.
+    
+    Parámetros:
+    -----------
+    img       : Imagen con valores RGB normalizados.
+    new_shape : Tamaño nuevo de la imagen buscada.
+                 [Default='x1']
+    method    : Método a utlizar.
+                 [Default='nearest']
+    sp        : Utilizar el paquete de scipy. 
+                 [Default=False]
+    verb      : Imprimir mensajes. 
+                 [Default=True]
+    """
+    
+    # Check
+    Check_IMG(img, normed=True)
+    
+    if len(img.shape)==3: # RGB
+        R = Manual_Resize(img[:,:, 0], new_shape, method,
+                         sp, verb=verb)
+        G = Manual_Resize(img[:,:, 1], new_shape, method,
+                         sp, verb=False)
+        B = Manual_Resize(img[:,:, 2], new_shape, method,
+                         sp, verb=False)
+        img_new = np.zeros((R.shape[0], R.shape[1], 3))
+        img_new[:,:,0] = R
+        img_new[:,:,1] = G
+        img_new[:,:,2] = B
+        
+    elif len(img.shape)==2: # Y
+        img_new = Resize_Manual(img[:,:, 0], new_shape, method,
+                         sp, verb=verb)
+    
+    else: raise ValueError('Error en imagen.')
+        
+    return img_new

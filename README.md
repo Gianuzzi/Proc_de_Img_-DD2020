@@ -15,8 +15,8 @@ de la Diplomatura en Ciencia de Datos 2020.
     
     - matplotlib >= 3.2.2
     - numpy      >= 1.18.5
-    - Pillow     >= 7.0.0
-    - seaborn    >= 0.11.0
+    - PIL        >= 7.0.0 [Ejercicio 1.4]
+    - scipy      >= 1.4.1 [Ejercicio 2.3]
 
 - Opción 2: Ejecutar los ``.ipynb`` desde *COLAB*:
 
@@ -29,3 +29,8 @@ de la Diplomatura en Ciencia de Datos 2020.
     -[Ejercicio 2.1](https://colab.research.google.com/github/Gianuzzi/Proc_de_Img_-DD2020/blob/main/Ejercicio2.1.ipynb)
 
     -[Ejercicio 2.2](https://colab.research.google.com/github/Gianuzzi/Proc_de_Img_-DD2020/blob/main/Ejercicio2.2.ipynb)
+
+    -[Ejercicio 2.3](https://colab.research.google.com/github/Gianuzzi/Proc_de_Img_-DD2020/blob/main/Ejercicio2.3.ipynb)
+
+## Observación:
+    Al Ejercicio 2.3 aún le falta incorporar la sección de *Cuantización*.
