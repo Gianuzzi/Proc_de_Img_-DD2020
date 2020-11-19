@@ -7,6 +7,92 @@ import matplotlib.image as mpimg
 
 # Funciones
 
+def ReadIMG(path, formato=None, d_name=None):
+    """
+    Función para cargar una imagen.
+    
+    Parámetros:
+    -----------
+    path   : Path al archivo imagen. Puede ser un 
+              URL, o un path del ordenador.
+    formato: Formato (extensión) del archivo imagen
+              a cargar, en caso que no esté explícito
+              en el path. Suele ser necesario en 
+              casos específicos de descarga desde URL.
+              Se intenta con 'png' y 'jpg'.
+              [Default=None]
+    d_name : Guardar la imagen (si se descarga).
+              Si d_name=None [Default], no se guarda.
+              Se puede especificar un nombre (str), 
+               el cual DEBE incluir el formato de la imagen;
+               por ejemplo: 'Descargada.png'
+              Si d_name=True, se guarda con nombre
+               "Imagen.jpg" 
+    """    
+    
+    import os
+    # First blind try
+    try:
+        img = mpimg.imread(path, format=formato)
+        ok  = True
+    except:
+        ok = False
+    if ~ok:
+        # Check if url or File  
+        if os.path.isfile(path): #File
+            import imghdr
+            formato = imghdr.what(path)
+        else:
+            from urllib.request import urlopen
+            from urllib.error import HTTPError
+            try:
+                urlopen(path)
+            except HTTPError as e:
+                print('--- ERROR DE URL --- \n'\
+                      'No se pudo descargar la imagen.')
+                if str(e) == 'HTTP Error 404: Not Found':
+                    print('La URL está mal escrita.')
+                raise e
+        # Get Image, second chance
+        try:
+            img = mpimg.imread(path, format=formato)
+        except HTTPError as e:
+            print('---  ERROR DE URL  --- \n'\
+                  'No se pudo obtener la imagen.')
+            if str(e) == 'HTTP Error 403: Forbidden':
+                print('El acceso al URL por este medio '\
+                      'está Prohibido')
+            print('Intente con otro URL.')
+            raise e
+        except SyntaxError: # Bad format
+            try: # Try with jpg (mostly used)
+                img = mpimg.imread(path, format='jpg')
+            except SyntaxError as e:
+                print('--- ERROR DE LECTURA ---\n' \
+                      'Puede que el path NO sea de una IMAGEN,'\
+                      ' o que el formato no sea el correcto.')
+                print('Verifique ambos de ser posible.')
+                raise e
+    # Save
+    if (d_name is not None) and (not os.path.isfile(path)):
+        if not isinstance(d_name, str): 
+            d_name = 'Imagen.jpg'
+        try:
+            plt.imsave(d_name, img, cmap=plt.cm.gray)
+        except ValueError as e:
+            if str(e) == 'unknown file extension: ':
+                print('--- ERROR DE GUARDADO ---\n',\
+                      '"',d_name,'" NO es un nombre con una '\
+                     'extensión (formato) reconocida.')
+                print('Intente con otro nombre (que incluya)'\
+                      ' el formato).')
+                raise(e)
+        print('Imagen guardada con nombre:', d_name)
+        
+    return img
+
+
+
 def Check_IMG(IMG, RGB=False, YIQ=False, normed=False):
     """
     Función para checkear que los valores en una IMG sean válidos
@@ -1086,33 +1172,52 @@ def Chunks(img, shape, verb=False):
 
 
 
-def EnlargeImgY(Y, pad=0):
+def EnlargeImgY(Y, pad=None, padx=0, pady=0):
     """
     Función para crear una imagen que sa la extensión de bordes
      de otra imagen. Debe ser un array 2D.
     
     Parámetros:
     -----------
-    Y  : Array 2D con la imagen a agrandar. 
-    pad: Cantidad de píxeles a agregar a cada lado.
-          En caso de uso para filtro, suele ser: (len(filtro) - 1) // 2"""
+    Y   : Array 2D con la imagen a agrandar. 
+    pad : Cantidad de píxeles a agregar a cada lado, en x e y.
+           En caso de uso para filtro, suele ser: (len(filtro) - 1) // 2
+           [Default=None]
+    padx: Cantidad de píxeles a agregar a cada lado, en x.
+           [Default=0]
+    padx: Cantidad de píxeles a agregar a cada lado, en y.
+           [Default=0]
+    """
     
-    # Create new array
-    Y_m  = np.pad(Y, pad, constant_values=0)
-    hn   = Y_m.shape[0]
-    wn   = Y_m.shape[1]
-
+    # Old shape
+    h, w = Y.shape
+    
+    # Pad
+    if pad is not None:
+        padx   = pady = pad
+        Y_m    = np.pad(Y, pad, constant_values=0)
+        hn, wn = Y_m.shape
+    else:
+        Y_m    = np.zeros((h + (2 * pady),
+                           w + (2 * padx)))
+        hn, wn = Y_m.shape        
+        Y_m[pady:hn-pady, padx:wn-padx] = Y
+    
     # New edges
-    Y_m[:pad        , pad:(wn-pad)] = np.repeat(Y[0 , :][np.newaxis,:], pad, axis=0)
-    Y_m[pad:(hn-pad), (wn-pad):   ] = np.repeat(Y[: ,-1][:,np.newaxis], pad, axis=1)
-    Y_m[(hn-pad):   , pad:(wn-pad)] = np.repeat(Y[-1, :][np.newaxis,:], pad, axis=0)
-    Y_m[pad:(hn-pad), :pad        ] = np.repeat(Y[: , 0][:,np.newaxis], pad, axis=1)
+    Y_m[:pady       , padx:wn-padx] = np.repeat(Y[0 , :][np.newaxis,:],
+                                                pady, axis=0)
+    Y_m[pady:hn-pady, wn-padx:    ] = np.repeat(Y[: ,-1][:,np.newaxis],
+                                                padx, axis=1)
+    Y_m[hn-pady:    , padx:wn-padx] = np.repeat(Y[-1, :][np.newaxis,:],
+                                                pady, axis=0)
+    Y_m[pady:hn-pady, :padx       ] = np.repeat(Y[: , 0][:,np.newaxis],
+                                                padx, axis=1)
 
     # New corners
-    Y_m[:pad        , :pad     ] = Y[0 , 0]
-    Y_m[:pad        , (wn-pad):] = Y[0 ,-1]
-    Y_m[(hn-pad):   , (wn-pad):] = Y[-1,-1]
-    Y_m[(hn-pad):   , :pad     ] = Y[-1, 0]
+    Y_m[:pady , :padx     ] = Y[0 , 0]
+    Y_m[:pady , wn-padx:  ] = Y[0 ,-1]
+    Y_m[hn-pady:, wn-padx:] = Y[-1,-1]
+    Y_m[hn-pady:, :padx   ] = Y[-1, 0]
     
     return Y_m
 
