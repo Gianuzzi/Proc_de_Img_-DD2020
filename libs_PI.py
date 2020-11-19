@@ -1760,7 +1760,7 @@ def ApplyManual_Resize(img, new_shape='x1',method='nearest',
         img_new[:,:,2] = B
         
     elif len(img.shape)==2: # Y
-        img_new = Resize_Manual(img, new_shape, method,
+        img_new = Manual_Resize(img, new_shape, method,
                          sp, verb=verb)
     
     else: raise ValueError('Error en imagen.')
