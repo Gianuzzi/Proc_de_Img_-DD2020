@@ -462,13 +462,12 @@ def Transform_IMG(img,
 
 def Resize_IMG(img,
                width=None, height=None,
-               resize=False,
+               resize=False, large=False, sp=False,
                crop=False,
                fill=None,
-               normed=True,
                verb=False):
     """
-    Función para realizar edición de tamaño a 1 imagen (array).
+    Función para realizar edición de tamaño a 1 imagen (array) RGB.
     Se define primero el ancho y alto buscado, y luego se 
      especifica qué operaciones se quieren realizar (Ordenadas 
      según orden de ejecución).
@@ -485,7 +484,7 @@ def Resize_IMG(img,
             
     Parámetros:
     -----------
-    img   : Imagen (ndarray) a aplicar edición.
+    img   : Imagen (ndarray) normalizada a aplicar edición.
     width : Ancho en píxeles a setear. 
             Si width==None, se mantiene el ancho original. 
             (int)
@@ -495,6 +494,17 @@ def Resize_IMG(img,
     resize: Expandir/Contraer la imagen, conservando el aspecto 
              original (height/width == cte).
             (bool)
+    large : Si se utiliza resize, entonces large==True
+             significa que se busca la mayor imagen posible, 
+             tal que al menos 1 de los 2 lados coincide en tamaño
+             con el buscado buscado. [Default==False]
+             (bool)
+    sp    : Si se utiliza resize, entonces sp==True significa que 
+             para interpolar al tamaño nuevo se utiliza el paquete
+             SciPy, a través de un modelo bicúbico.
+             Si sp==False [Default], entonces se utiliza un modelo
+             bilineal aplicado manualmente.
+             (bool)
     crop  : Aplicar recorte de excedente a la imagen.
             (bool)
     fill  : Aplicar rellenado de faltante, para alcanzar el tamaño
@@ -505,94 +515,93 @@ def Resize_IMG(img,
              capaz de ser manipulado por matplotlib. 
             Si fill==True se rellena con negro.
             (tuple/list)
-    normed: Si la matriz de datos está normalizada a [0,1).
-            (bool)
     verb  : Imprimir los pasos realizados.
             (bool)
     """
     
     # Check
-    Check_IMG(img, normed=normed)
+    Check_IMG(img, normed=True, RGB=True)
 
     # Width/Height
     ## Height
     if isinstance(height, int):
-        if   height>0: h = height
+        if height>0: h = height
         else: raise ValueError('height debe ser > 0')
     elif height is None: h = img.shape[0]
     else: raise TypeError('Formato erróneo de height.')
     ## Width
     if isinstance(width, int): 
-        if   width>0: w = width
+        if width>0: w = width
         else: raise ValueError('width debe ser > 0')
     elif width is None: w = img.shape[1]
     else: raise TypeError('Formato erróneo de width.')
-    
-    if verb: print('[Ancho, Alto] buscado:', w, h)   
-    
-    # Working in PIL IMAGE format
-    from PIL import Image
-    if not normed:
-        i = Image.fromarray(img)
-    else:
-        i = Image.fromarray((img*255).astype('uint8'))
-    
+
+        
     # Verbose
     if verb:
-        old = i.size
-        print('Tamaño inicial:', old)
-        
+        print('[Alto, Ancho] buscado:', h, w) 
+        old = img.shape
+        print('Tamaño actual de la imagen: [h,w]:'\
+              ' [{},{}]'.format(old[0], old[1]))
+    
+    # Work on copy
+    i = img.copy()
+    
     # Resize
-    if resize:
-        if (w<=i.size[0]) | (h<=i.size[1]):
-            i.thumbnail([w,h], Image.ANTIALIAS)
-        else:
-            r = i.size[1]/float(i.size[0])
-            sep_w = w / float(i.size[0])
-            sep_h = h / float(i.size[1])
-            if sep_h < sep_w:
-                i = i.resize([int(h/r),h], Image.ANTIALIAS)
-            else:
-                i = i.resize([w,int(w*r)], Image.ANTIALIAS)
+    if (resize) & ((h != i.shape[0]) | (w != i.shape[1])):
+        r_h = h / float(i.shape[0])
+        r_w = w / float(i.shape[1])
+        r = max(r_h, r_w) if large else min(r_h, r_w)
+        method = 'bicubic' if sp else 'bilineal'
+        i = ApplyManual_Resize(i, new_shape=r, 
+                method=method, sp=sp, verb=verb)
         if verb: 
-            print('Aplicado resize:', old, '-->', i.size)
-            old = i.size
-                
+                print('Aplicado resize: [{},{}]'
+                      ' --> [{},{}]'.format(
+                        old[0], old[1],
+                        i.shape[0], i.shape[1]))
+                old = i.shape
+        
     # Crop | BOX == [left, [up, right), down)
-    if crop:
-        dw = i.size[0] - w # IMG uses inverted size
-        dh = i.size[1] - h # IMG uses inverted size
-        le = int(dw/2)     if dw>0 else 0
-        ri = int(dw/2) + w if dw>0 else i.size[0]
-        up = int(dh/2)     if dh>0 else 0
-        do = int(dh/2) + h if dh>0 else i.size[1]
-        i  = i.crop((le, up, ri, do))
+    if (crop) & ((h < i.shape[0]) | (w < i.shape[1])):
+        up = max((i.shape[0] - h)//2, 0)
+        le = max((i.shape[1] - w)//2, 0)
+        do = i.shape[0] - up
+        ri = i.shape[1] - le
+        i  = i[up:do, le:ri]
         if verb: 
-            print('Aplicado corte:', old, '-->', i.size)
-            old = i.size
+            print('Aplicado corte: [{},{}]'
+                  ' --> [{},{}]'.format(
+                    old[0], old[1],
+                    i.shape[0], i.shape[1]))
+            old = i.shape
             
     # Fill
-    if fill is not None:
-        wf = w if (i.size[0] < w) else i.size[0]
-        hf = h if (i.size[1] < h) else i.size[1]
-        if isinstance(fill, list): fill = tuple(fill)
-        if fill==True: fill = (0,0,0)
-        f = Image.new('RGB', (wf, hf), color=fill)
-        f.paste(i, (int((wf - i.size[0]) / 2),
-                    int((hf - i.size[1]) / 2)))
-        i = f
+    if (fill is not None) & \
+        ((h > i.shape[0]) | (w > i.shape[1])):
+        if isinstance(fill, str):
+            fill = np.array(colors.to_rgb(fill))
+        elif isinstance(fill, (int,float)): 
+            fill = np.full(3, int(fill))
+        elif fill==True: 
+            fill = (0,0,0)
+        if isinstance(fill, (list, tuple)):
+            fill = np.array(fill)
+        if any(fill > 1): fill = fill / 255.
+        inew = np.full((h, w, 3), fill)
+        dh = max((h - i.shape[0])//2, 0)
+        dw = max((w - i.shape[1])//2, 0)
+        inew[dh:dh + i.shape[0],
+             dw:dw + i.shape[1]] = i
+        i = inew
         if verb: 
-            print('Aplicado rellenado:', old, '-->', i.size)
-            print('\t Color utilizado:', fill)
-    
-    # Verbose
-    if verb:
-        print('\n Tamaño final:', i.size)
+            print('Aplicado rellenado: [{},{}]'
+                  ' --> [{},{}]'.format(
+                    old[0], old[1],
+                    i.shape[0], i.shape[1]))
+            print('\t Color RGB utilizado:',
+                      fill*255)
         
-    # Return to array
-    i = np.array(i)
-    if normed: i = i/255.
-    
     return i
 
 
@@ -600,9 +609,10 @@ def Resize_IMG(img,
 def Resize2IMGs(img1, img2,
                 width=None, height=None,
                 resize_1=False, resize_2=False,
+                large_1=False, large_2=False,
+                sp_1=False, sp_2=False,
                 crop_1=False, crop_2=False,
                 fill_1=None, fill_2=None,
-                normed_1=False, normed_2=False,
                 verb=False):
     """
     Función para realizar edición de tamaño a 2 imágenes (arrays),
@@ -627,6 +637,16 @@ def Resize2IMGs(img1, img2,
               (bool)
     resize_2: Aplicar resize en imagen 2.
               (bool)
+    large_1 : Agrandar lo más posible si se aplica resize en imagen 1.
+              (bool)
+    large_2 : Agrandar lo más posible si se aplica resize en imagen 2.
+              (bool)
+    sp_1    : Utilizar paquete de SciPy para interpolación con método
+                bicúbico si se aplica resize en imagen 1.
+              (bool)
+    sp_2    : Utilizar paquete de SciPy para interpolación con método
+                bicúbico si se aplica resize en imagen 2.
+              (bool)
     crop_1  : Aplicar crop en imagen 1.
               (bool)
     crop_2  : Aplicar crop en imagen 2.
@@ -640,8 +660,8 @@ def Resize2IMGs(img1, img2,
     """
     
     # Check
-    Check_IMG(img1)
-    Check_IMG(img2)
+    Check_IMG(img1, normed=True, RGB=True)
+    Check_IMG(img2, normed=True, RGB=True)
     
     # Width/Height
     ## Height
@@ -656,6 +676,7 @@ def Resize2IMGs(img1, img2,
     i1 = Resize_IMG(img1,
                     width=width, height=height,
                     resize=resize_1,
+                    large=large_1, sp=sp_1,
                     crop=crop_1,
                     fill=fill_1,
                     verb=verb)
@@ -663,6 +684,7 @@ def Resize2IMGs(img1, img2,
     i2 = Resize_IMG(img2,
                     width=width, height=height,
                     resize=resize_2,
+                    large=large_2, sp=sp_2,
                     crop=crop_2,
                     fill=fill_2,
                     verb=verb)

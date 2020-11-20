@@ -15,8 +15,7 @@ de la Diplomatura en Ciencia de Datos 2020.
     
     - matplotlib >= 3.2.2
     - numpy      >= 1.18.5
-    - PIL        >= 7.0.0 [Ejercicio 1.4]
-    - scipy      >= 1.4.1 [Ejercicio 2.3]
+    - scipy      >= 1.4.1 [Ejercicio 1.4 (Opcional), Ejercicio2.3]
 
 - Opción 2: Ejecutar los ``.ipynb`` desde *COLAB*:
 
