@@ -1788,3 +1788,341 @@ def ApplyManual_Resize(img, new_shape='x1',method='nearest',
     else: raise ValueError('Error en imagen.')
         
     return img_new
+
+
+
+def Cuantizador(Y, levels=None,
+                method='uniforme', y0=0.5,
+                error=None, thresh=0,
+                only_l=False,
+                rescale=False, 
+                verb=False):
+    """
+    Función para aplicar cuantización de luminancias a una imagen.
+    
+    Parámetros:
+    Y      : Array 2D con luminancias a cuantizar. 
+              Debe estar normalizado a [0,1)
+    levels : Cantidad de niveles a generar. Puede ser un array, lista o tupla
+              con los niveles a utilizar. (int/ndarray)
+              [Default=None]
+    method : Método a utilizar para generar los niveles (si no fueron dados). (str)
+              Los métodos disponibles son:
+               - 'uniforme', 'uniform'
+               - 'no_uniforme', 'non_uniform' 
+               - 'modas', 'modes', 'populosity'
+               - 'cuantiles', 'quantiles'
+               - 'medianas', 'median_cut' 
+               - 'medianas2', 'median_cut2' (obliga igual cantidad de px por nivel)
+              [Default=uniforme]
+    y0     : Valor inicial en caso de seleccionar method=='no_uniforme'. 
+              Este método elabora niveles siguiendo la paradoja de Aquiles y 
+              la tortuga (siempre la mitad de lo que le falta), incluyendo al
+              principio y al final, y arrancando en y0. (float)
+              [Default=0.5]
+    error  : Método a utilizar para intentar reducir el error de cuantización. (str)
+              Los métodos disponibles son:
+               - 'scan_line'
+               - 'scan_row'
+               - 'aleatorio', 'dithering_aleatorio', 'random_dithering'
+               - '2d'
+               - 'floyd_steinberg_dithering', 'fs_dithering'
+               - 'minimized average error', 'mae', 'jjn_dithering'
+              [Default=None]
+    thresh : Valor a utilizar como semillar de error en caso de de seleccionar
+              error=='scan_line' o error=='scan_row'. (float)
+              [Default=0]
+    only_l : Generar y devolver simplemente los niveles. Puede ser util para
+              construirlos en luminancias y luego utilizarlos en RGB. (bool)
+              [Default=False]
+    rescale: Si rescale==True, entonces al finalizar la cuantización se
+              rescalan artificialmente los niveles obtenidos a distribución
+              uniforme. (bool)
+              [Default=False] 
+    verb   : Imprimir mensaje. (bool)
+              [Default=False]
+    """
+    
+    
+    #Check
+    Check_IMG(Y, normed=True)
+    LV = False
+    
+    if levels is None: return Y
+    elif isinstance(levels, int):
+        if levels <= 1: raise ValueError('Debe introducirse '\
+                'una cantidad > 1 de niveles.')
+    elif isinstance(levels, (list, tuple, np.ndarray)):
+        levels = np.sort(np.array(levels))
+        LV     = True
+        if len(levels) == 1: raise ValueError('Debe introducirse '\
+                'una cantidad > 1 de niveles.')
+        if  np.any(levels < 0) |  np.any(levels > 1):
+            raise ValueError('Los niveles deben estar entre 0 y 1.')
+    else: raise TypeError('Error en niveles.')
+        
+    methods = ['uniforme', 'uniform',
+               'no_uniforme', 'non_uniform',
+               'modas', 'modes', 'populosity',
+               'cuantiles', 'quantiles',
+               'medianas', 'median_cut', 
+               'medianas2', 'median_cut2']
+    
+    errors = ['scan_line',
+              'scan_row',
+              'aleatorio', 'dithering_aleatorio', 'random_dithering',
+              '2d',
+              'floyd_steinberg_dithering', 'fs_dithering',
+              'minimized average error', 'mae', 'jjn_dithering']
+    
+    if not isinstance(method, str): 
+            raise TypeError('Error en método. Debe ser un string.')
+    method = method.replace(" ", '_').replace("-", '_').replace("'", '').lower()
+    if method not in methods: raise ValueError('Método no reconocido.')
+    
+    if error is not None:
+        if isinstance(error, str):
+            error = error.replace(" ", '_').replace("-", '_').replace("'", '').lower()
+            if error not in errors: raise ValueError('Error no reconocido.')
+        else: raise TypeError('Error en Error. Debe ser un string.')        
+    
+    
+    # Create levels if not given
+    if not LV:
+        if method in methods[:2]: # uniform
+            levels  = np.cumsum(np.full(levels, 1/(levels)))
+            levels -= (levels[0] * 0.5)
+        elif (method in methods[2:4]) & (levels == 2): # non Uniform
+            levels = np.array([Y.min(), Y.max()])
+        elif (method in methods[2:4]) & (levels != 2): # non Uniform
+            if levels > 10: 
+                raise ValueError('Este método carece de sentido con > 10 niveles')
+            if isinstance(y0, float) & (abs(y0) < 1):
+                if   y0 < 0: Inv = True
+                elif y0 > 0: Inv = False
+                else: raise ValueError('y0 debe ser != 0')
+            else:
+                raise ValueError('Error en Value.')
+            aux    = (1 - y0) / (2**np.arange(1, levels - 2))
+            aux    = np.concatenate(([y0], aux))
+            levels = np.concatenate(([0], aux.cumsum(), [1]))
+            if Inv: levels = 1 - levels[::-1]
+        elif method in methods[4:7]: # populosity
+            # this method goes better if ints used
+            Yint       = (Y * 255).astype(int)
+            vals, cant = np.unique(Yint, return_counts=True)
+            order      = np.argsort(cant)
+            levels     = np.sort(vals[order][:levels]) / 255.            
+        elif method in methods[7:9]: # quantiles
+            aux    = np.cumsum(np.full(levels, 1/(levels)))
+            aux   -= (aux[0] * 0.5)
+            levels = np.quantile(Y, aux)
+        elif method in methods[9:13]: # median cut 1 o 2
+            pxpl = Y.size / float(levels) # px per level
+            aux  = np.split(np.sort(np.reshape(Y, Y.size)),
+                            np.arange(1, levels) * int(pxpl)) # last may have more
+            levels = np.array([])
+            for vec in aux: levels = np.append(levels, np.median(vec))
+            if method in methods[11:13]: # median cut 2 (construct bins itself)
+                ordr = np.argsort(np.argsort(Y.ravel()))
+                aux2 = np.repeat(np.arange(len(levels)), int(pxpl)) # [0,0,0,...,l,l,l]
+                aux2 = np.append(aux2, np.full(Y.size - aux2.size, aux2[-1]))  # msng vals
+                bins = aux2[ordr].reshape(Y.shape)
+     
+    # Verbose
+    if verb: 
+        print('Aplicando cuantización de imagen a %i niveles.' %len(levels))
+        if not LV: print('Los niveles se configuraron por método: %s' %method)
+        else: print('Se utilizan los niveles introducidos.')
+    
+    # Only Levels
+    if only_l: return levels
+
+    # NO Error
+    if error is None:  # NN method
+        if verb: print('No se aplica reducción de error.')
+        if "bins" not in locals(): # if not done
+            # Binn data
+            l    = len(levels)
+            bins = np.searchsorted(levels, Y, side='right') 
+            bins[bins == 0] = 1
+            bins[bins == l] = l - 1
+            dx2  = levels[bins] - Y                          
+            dx1  = Y - levels[bins-1]                                     
+            bins[np.abs(dx1) < np.abs(dx2)] -= 1
+        
+        # CREATE Y_m
+        Y_m = levels[bins]
+    
+    # Error
+    else:
+        Y_m        = Y.copy()
+        ymax, xmax = Y.shape
+        if verb: print('Se aplica reducción de error por método: %s' %error)
+    
+    ## Errors
+    if error == 'scan_line': # por col
+        if abs(thresh) > 1: 
+            raise ValueError('EL valor absoluto de thresh debe ser < 1.')
+        for y in range(ymax): # row
+            err = thresh
+            for x in range(xmax): # col
+                old       = Y_m[y, x]
+                Y_m[y, x] = levels[np.argmin(np.abs(
+                                levels - old + err))]
+                err      += (Y_m[y, x] - old)      
+    elif error == 'scan_row': # por row
+        if abs(thresh) > 1: 
+            raise ValueError('EL valor absoluto de thresh debe ser < 1.')
+        for x in range(xmax): # col
+            err = thresh
+            for y in range(ymax): # row
+                old       = Y_m[y, x]
+                Y_m[y, x] = levels[np.argmin(np.abs(
+                                levels - old + err))]
+                err      += (Y_m[y, x] - old)    
+    elif error in errors[2:5]: # random
+        for y in range(ymax): # row
+            err = np.random.rand()
+            for x in range(xmax): # col
+                old       = Y_m[y, x]
+                Y_m[y, x] = levels[np.argmin(np.abs(
+                                levels - old + err))]
+                err      += (Y_m[y, x] - old)
+    elif error == '2d': #2d
+        for y in range(ymax): # row
+            for x in range(xmax): # col
+                old       = Y_m[y, x]
+                new       = levels[np.argmin(np.abs(levels - old))]
+                diff      = old - new
+                Y_m[y, x] = new
+                if x < xmax - 1: Y_m[y  , x+1] += (diff * 0.5)
+                if y < ymax - 1: Y_m[y+1, x  ] += (diff * 0.5)
+    elif error in errors[6:7]: #FS dither
+        for y in range(ymax): # row
+            for x in range(xmax): # col
+                old       = Y_m[y, x]
+                new       = levels[np.argmin(np.abs(levels - old))]
+                diff      = old - new
+                Y_m[y, x] = new
+                if x < xmax - 1:
+                    Y_m[y  , x+1] += (diff * 0.4375)
+                if y < ymax - 1:
+                    Y_m[y+1, x  ] += (diff * 0.1875)
+                    if x > 0: Y_m[y+1, x-1] += (diff * 0.3125)
+                    if x < xmax - 1: Y_m[y+1, x+1] += (diff * 0.0625)  
+    elif error in errors[7:]: # minimized average error
+        mat = np.array([[0,0,0,7,5],
+                        [3,5,7,5,3],
+                        [1,3,5,3,1]])/48.
+        for y in range(ymax): # row
+            yG = y < ymax - 2
+            y1 = y == ymax - 2
+            y2 = y == ymax - 1
+            for x in range(xmax): # col
+                old       = Y_m[y, x]
+                new       = levels[np.argmin(np.abs(levels - old))]
+                diff      = old - new
+                Y_m[y, x] = new # PX!
+                if (1 < x < xmax - 2) & yG:                 # x G, y G
+                    Y_m[y:y+3, x-2:x+3] += diff * mat         
+                elif (1 < x < xmax - 2) & y1:               # x G, y B1
+                    Y_m[y:y+2, x-2:x+3] += diff * mat[:2]     
+                elif (1 < x < xmax - 2) & y2:               # x G, y B2
+                    Y_m[y, x-2:x+3] += diff * mat[0]          
+                elif (x == 1) & yG:                         # x B1, y G
+                    Y_m[y:y+3, 0:4] += diff * mat[:, 1:]       
+                elif (x == 1) & y1:                         # x B1, y B1
+                    Y_m[y:y+2, 0:4] += diff * mat[:2, 1:]      
+                elif (x == 1) & y2:                         # x B1, y B2
+                    Y_m[y, 0:4] += diff * mat[0, 1:]           
+                elif (x == 0) & yG:                         # x B2, y G
+                    Y_m[y:y+3, 0:3] += diff * mat[:, 2:] 
+                elif (x == 0) & y1:                         # x B2, y B1
+                    Y_m[y:y+2, 0:3] += diff * mat[:2, 2:]
+                elif (x == 0) & y2:                         # x B2, y B2
+                    Y_m[y, 0:3] += diff * mat[0, 2:]
+                elif (x == xmax - 2) & yG:                  # x B3, y G
+                    Y_m[y:y+3, x-2:] += diff * mat[:, :-1]    
+                elif (x == xmax - 2) & y1:                  # x B3, y B1
+                    Y_m[y:y+2, x-2:] += diff * mat[:2, :-1]   
+                elif (x == xmax - 2) & y2:                  # x B3, y B2
+                    Y_m[y, x-2:] += diff * mat[0, :-1]        
+                elif (x == xmax - 1) & yG:                  # x B4, y G
+                    Y_m[y:y+3, x-2:] += diff * mat[:, :-2]   
+                elif (x == xmax - 1) & y1:                  # x B4, y B1
+                    Y_m[y:y+2, x-2:] += diff * mat[:2, :-2]   
+                # (x == xmax - 1) & (y == ymax - 1): --> NO contibution     
+    
+    # Rescale
+    if rescale:
+        print('Se redistribuyen los niveles a %i'\
+              ' separados uniformemente.' %len(levels))
+        levels_eq = np.linspace(0, 1, len(levels))
+        for i in range(len(levels)): 
+            Y_m[Y_m == levels_eq[i]] = levels_eq[i]
+
+    # Return 
+    return Y_m
+
+
+
+def ApplyCuantizador(img, levels=None, method='uniforme', y0=0.05,
+                     error=None, thresh=0, rescale=False, verb=False):
+    """
+    Función para ejecutar Cuantizador() a una imagen.
+    
+    Parámetros:
+    -----------
+    img    : Imagen con valores RGB normalizados.
+    levels : Niveles o cantidad de niveles.
+              [Default=None]
+    method : Método a utlizar para crear los niveles.
+              [Default='uniforme']
+    y0     : Valor inicial, si methods=='no uniforme'.
+              [Default=0.5]
+    error  : Método a utlizar para reducir el error.
+              [Default=False]
+    thresh : Valor a utilizar como semillar de error, si 
+              error=='scan_line' o error=='scan_row'.
+              [Default=0]
+    rescale: Rescalar artificialmente los niveles obtenidos 
+              a distribución uniforme.
+              [Default=False] 
+    verb   : Imprimir mensaje.
+              [Default=False]
+    """
+    
+    # Check
+    Check_IMG(img, normed=True)
+    
+    if len(img.shape)==3: 
+        if isinstance(levels, int): # Generate from lums
+            if verb: print('Aplicando cuantización en luminancias,'\
+                           ' para obtener los niveles adecuados.')
+            Y      = RGBtoYIQ(img, normed=True)[:,:,0]
+            levels = Cuantizador(Y, levels=levels, method=method, y0=y0,
+                        only_l=True, rescale=rescale, verb=verb)
+        ## New RGB
+        if verb: print('Aplicando cuantización en R.')
+        R = Cuantizador(img[:,:,0], levels=levels, method=method, y0=y0,
+                        error=error, thresh=thresh, rescale=rescale)
+        if verb: print('Aplicando cuantización en G.')
+        G = Cuantizador(img[:,:,1], levels=levels, method=method, y0=y0,
+                        error=error, thresh=thresh, rescale=rescale)
+        if verb: print('Aplicando cuantización en B.')
+        B = Cuantizador(img[:,:,2], levels=levels, method=method, y0=y0,
+                        error=error, thresh=thresh, rescale=rescale,
+                        verb=verb)
+        img_c = np.zeros((R.shape[0], R.shape[1], 3))
+        img_c[:,:,0] = R
+        img_c[:,:,1] = G
+        img_c[:,:,2] = B
+        
+    elif len(img.shape)==2:
+        img_c = Cuantizador(img, levels=levels, method=method, y0=y0,
+                        error=error, thresh=thresh, rescale=rescale, verb=verb)
+
+    else: raise ValueError('Error en imagen.')        
+    
+    return img_c

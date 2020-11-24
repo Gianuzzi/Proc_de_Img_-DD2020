@@ -30,6 +30,3 @@ de la Diplomatura en Ciencia de Datos 2020.
     -[Ejercicio 2.2](https://colab.research.google.com/github/Gianuzzi/Proc_de_Img_-DD2020/blob/main/Ejercicio2.2.ipynb)
 
     -[Ejercicio 2.3](https://colab.research.google.com/github/Gianuzzi/Proc_de_Img_-DD2020/blob/main/Ejercicio2.3.ipynb)
-
-## Observación:
-    Al Ejercicio 2.3 aún le falta incorporar la sección de *Cuantización*.
