@@ -8,7 +8,7 @@ import matplotlib.image as mpimg
 
 # Funciones
 
-def ReadIMG(path, formato=None, d_name=None):
+def ReadIMG(path, formato=None, d_name=None, in_colab=False):
     """
     Función para cargar una imagen.
     
@@ -32,6 +32,7 @@ def ReadIMG(path, formato=None, d_name=None):
     """    
     
     import os
+    if in_colab: d_name=None
     # First blind try
     try:
         img = mpimg.imread(path, format=formato)
@@ -41,9 +42,11 @@ def ReadIMG(path, formato=None, d_name=None):
     if ~ok:
         # Check if url or File  
         if os.path.isfile(path): #File
+            url = False
             import imghdr
             formato = imghdr.what(path)
         else:
+            url = True
             from urllib.request import urlopen
             from urllib.error import HTTPError
             try:
@@ -74,6 +77,16 @@ def ReadIMG(path, formato=None, d_name=None):
                       ' o que el formato no sea el correcto.')
                 print('Verifique ambos de ser posible.')
                 raise e
+        except ValueError: # Colab usual problem
+            if in_colab:
+                from subprocess import getoutput
+                try: # Last resource
+                    getoutput('wget -O Imagen ' + path)
+                except Exception as e:
+                    raise e
+                import imghdr
+                formato = imghdr.what('Imagen')
+                img = mpimg.imread('Imagen', format=formato)
     # Save
     if (d_name is not None) and (not os.path.isfile(path)):
         if not isinstance(d_name, str): 
