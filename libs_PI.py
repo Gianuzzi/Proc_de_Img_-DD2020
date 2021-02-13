@@ -1526,7 +1526,7 @@ def ApplyMorfOp(Y):
             
             
 def Manual_Resize(Y, new_shape='x1', method='nearest', 
-                  sp=False, verb=True):
+                  sp=False, even=False, verb=True):
     """
     Función para cambiar el tamaño de una imagen 
     en luminancias.
@@ -1560,6 +1560,9 @@ def Manual_Resize(Y, new_shape='x1', method='nearest',
                  (En caso de realizaar una interpolación
                  bicúbica, sp debe ser True, ya que la 
                  implementación manual aún no está terminada.)
+    even      : Recortar la imagen oriiginal, para que sus
+                 longitudes sean pares. Activado si sp=True.
+                 [Default=False]
     verb      : Imprimir mensajes. [Default=True]
     """
     
@@ -1568,6 +1571,16 @@ def Manual_Resize(Y, new_shape='x1', method='nearest',
     Check_IMG(Y, RGB=True, normed=True)
     h, w = Y.shape[0], Y.shape[1]
     
+    # Even height/width
+    Y_c = Y.copy()
+    if sp or even:
+        if verb: print('Se utiliza una copia recortada de'\
+                       ' la imagen, con longitudes pares.')
+        Y_c  = Y[:h-h%2, :w-w%2].copy()
+        h, w = Y_c.shape[0], Y_c.shape[1]
+    else:
+        Y_c  = Y.copy()
+        
     ## New_shape
     if isinstance(new_shape, (str, int, float)):
         if isinstance(new_shape, str):
@@ -1586,8 +1599,8 @@ def Manual_Resize(Y, new_shape='x1', method='nearest',
 
     elif isinstance(new_shape, (list, tuple)):
         ns = np.array(new_shape).astype(int)
-        if ns.shape != 2: 
-            raise ValueError('new_shape debe tener shape==2')
+        if len(ns) != 2: 
+            raise ValueError('new_shape debe tener len==2')
         if (ns[0] < 2) | (ns[1] < 2):
             raise ValueError('new_shape debe ser > 1 en x e y')
         hn, wn = ns[0], ns[1]
@@ -1628,7 +1641,7 @@ def Manual_Resize(Y, new_shape='x1', method='nearest',
         ## NN SciPy
         if (method in methods[:4]) & sp:
             from scipy.interpolate import RegularGridInterpolator
-            RGI   = RegularGridInterpolator((y_or, x_or), Y, 
+            RGI   = RegularGridInterpolator((y_or, x_or), Y_c, 
                                             method='nearest', 
                                             bounds_error=False, 
                                             fill_value=None)
@@ -1646,7 +1659,7 @@ def Manual_Resize(Y, new_shape='x1', method='nearest',
         ## Linear SciPy
         if (method in methods[4:8]) & sp:
             from scipy.interpolate import interp2d
-            I2D    = interp2d(x_or, y_or, Y, kind='linear')
+            I2D    = interp2d(x_or, y_or, Y_c, kind='linear')
             Y_new  = I2D(x_ne, y_ne)
             
             # Clamp
@@ -1686,7 +1699,7 @@ def Manual_Resize(Y, new_shape='x1', method='nearest',
         Bx, By = np.meshgrid(binx, biny)
 
         # Create NN Image
-        Y_new  = Y[tuple([By,Bx])]
+        Y_new  = Y_c[tuple([By,Bx])]
 
         # RETURN IF NN
         if method in methods[:4]: return Y_new
@@ -1713,8 +1726,8 @@ def Manual_Resize(Y, new_shape='x1', method='nearest',
         x1, y2 = np.meshgrid(binxg-1, binyg)
         x2, y2 = np.meshgrid(binxg,   binyg)
         matrix = np.array([
-                    [Y[tuple([y1,x1])], Y[tuple([y2,x1])]],
-                    [Y[tuple([y1,x2])], Y[tuple([y2,x2])]]
+                    [Y_c[tuple([y1,x1])], Y_c[tuple([y2,x1])]],
+                    [Y_c[tuple([y1,x2])], Y_c[tuple([y2,x2])]]
                     ])
         
         # Offsets
@@ -1741,7 +1754,7 @@ def Manual_Resize(Y, new_shape='x1', method='nearest',
         
         if sp: # Use scipy implementation
             from scipy.interpolate import interp2d
-            I2D    = interp2d(x_or, y_or, Y, kind='cubic')
+            I2D    = interp2d(x_or, y_or, Y_c, kind='cubic')
             Y_new  = I2D(x_ne, y_ne)
             
             # Clamp
@@ -1762,7 +1775,7 @@ def Manual_Resize(Y, new_shape='x1', method='nearest',
 
 
 def ApplyManual_Resize(img, new_shape='x1',method='nearest',
-                       sp=False, verb=True):
+                       sp=False, even=False, verb=True):
     """
     Función para ejecutar Manual_Resize() a una imagen.
     
@@ -1775,6 +1788,8 @@ def ApplyManual_Resize(img, new_shape='x1',method='nearest',
                  [Default='nearest']
     sp        : Utilizar el paquete de scipy. 
                  [Default=False]
+    even      : Usar recorte par de la imagen.
+                 [Default=False]
     verb      : Imprimir mensajes. 
                  [Default=True]
     """
@@ -1782,12 +1797,25 @@ def ApplyManual_Resize(img, new_shape='x1',method='nearest',
     # Check
     Check_IMG(img, normed=True)
     
+    # Even height/width
+    if sp or even:
+        if verb: print('Se utiliza una copia recortada de'\
+                       ' la imagen, con longitudes pares.')
+        try:
+            h, w   = img.shape[0], img.shape[1]
+            img_c  = img[:h-h%2, :w-w%2, :].copy()
+        except:
+            raise ValueError('Error en imagen.')
+            
+    else:
+        img_c  = img.copy()
+                          
     if len(img.shape)==3: # RGB
-        R = Manual_Resize(img[:,:, 0], new_shape, method,
+        R = Manual_Resize(img_c[:,:, 0], new_shape, method,
                          sp, verb=verb)
-        G = Manual_Resize(img[:,:, 1], new_shape, method,
+        G = Manual_Resize(img_c[:,:, 1], new_shape, method,
                          sp, verb=False)
-        B = Manual_Resize(img[:,:, 2], new_shape, method,
+        B = Manual_Resize(img_c[:,:, 2], new_shape, method,
                          sp, verb=False)
         img_new = np.zeros((R.shape[0], R.shape[1], 3))
         img_new[:,:,0] = R
@@ -1795,7 +1823,7 @@ def ApplyManual_Resize(img, new_shape='x1',method='nearest',
         img_new[:,:,2] = B
         
     elif len(img.shape)==2: # Y
-        img_new = Manual_Resize(img, new_shape, method,
+        img_new = Manual_Resize(img_c, new_shape, method,
                          sp, verb=verb)
     
     else: raise ValueError('Error en imagen.')
